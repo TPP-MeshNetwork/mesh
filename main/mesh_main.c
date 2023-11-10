@@ -60,16 +60,16 @@ void mqtt_app_publish(char* topic, char *publish_string);
  *                Function Definitions
  *******************************************************/
 
-static void initialise_button(void)
-{
-    gpio_config_t io_conf = {0};
-    io_conf.intr_type = GPIO_INTR_DISABLE;
-    io_conf.pin_bit_mask = BIT64(EXAMPLE_BUTTON_GPIO);
-    io_conf.mode = GPIO_MODE_INPUT;
-    io_conf.pull_up_en = 1;
-    io_conf.pull_down_en = 0;
-    gpio_config(&io_conf);
-}
+// static void initialise_button(void)
+// {
+//     gpio_config_t io_conf = {0};
+//     io_conf.intr_type = GPIO_INTR_DISABLE;
+//     io_conf.pin_bit_mask = BIT64(EXAMPLE_BUTTON_GPIO);
+//     io_conf.mode = GPIO_MODE_INPUT;
+//     io_conf.pull_up_en = 1;
+//     io_conf.pull_down_en = 0;
+//     gpio_config(&io_conf);
+// }
 
 void static recv_cb(mesh_addr_t *from, mesh_data_t *data)
 {
@@ -99,49 +99,6 @@ void static recv_cb(mesh_addr_t *from, mesh_data_t *data)
     }
 }
 
-static void check_button(void* args)
-{
-    static bool old_level = true;
-    bool new_level;
-    bool run_check_button = true;
-    initialise_button();
-    while (run_check_button) {
-        new_level = gpio_get_level(EXAMPLE_BUTTON_GPIO);
-        if (!new_level && old_level) {
-            if (s_route_table_size && !esp_mesh_is_root()) {
-                ESP_LOGW(MESH_TAG, "Key pressed!");
-                mesh_data_t data;
-                uint8_t *my_mac = mesh_netif_get_station_mac();
-                uint8_t data_to_send[6+1] = { CMD_KEYPRESSED, };
-                esp_err_t err;
-                char print[6*3+1]; // MAC addr size + terminator
-                memcpy(data_to_send + 1, my_mac, 6);
-                data.size = 7;
-                data.proto = MESH_PROTO_BIN;
-                data.tos = MESH_TOS_P2P;
-                data.data = data_to_send;
-                snprintf(print, sizeof(print),MACSTR, MAC2STR(my_mac));
-                mqtt_app_publish("/topic/ip_mesh/key_pressed", print);
-                xSemaphoreTake(s_route_table_lock, portMAX_DELAY);
-                for (int i = 0; i < s_route_table_size; i++) {
-                    if (MAC_ADDR_EQUAL(s_route_table[i].addr, my_mac)) {
-                        continue;
-                    }
-                    err = esp_mesh_send(&s_route_table[i], &data, MESH_DATA_P2P, NULL, 0);
-                    ESP_LOGI(MESH_TAG, "Sending to [%d] "
-                            MACSTR ": sent with err code: %d", i, MAC2STR(s_route_table[i].addr), err);
-                }
-                xSemaphoreGive(s_route_table_lock);
-            }
-        }
-        old_level = new_level;
-        vTaskDelay(50 / portTICK_PERIOD_MS);
-    }
-    vTaskDelete(NULL);
-
-}
-
-
 void esp_mesh_mqtt_task(void *arg)
 {
     is_running = true;
@@ -167,11 +124,32 @@ void esp_mesh_mqtt_task(void *arg)
                 err = esp_mesh_send(&s_route_table[i], &data, MESH_DATA_P2P, NULL, 0);
                 ESP_LOGI(MESH_TAG, "Sending routing table to [%d] "
                         MACSTR ": sent with err code: %d", i, MAC2STR(s_route_table[i].addr), err);
-            }
-            // send mesh topology through mqtt
-            
+            }            
         }
         vTaskDelay(2 * 1000 / portTICK_PERIOD_MS);
+    }
+    vTaskDelete(NULL);
+}
+
+void esp_mesh_task_mqtt_graph(void *arg)
+{
+    is_running = true;
+    char *print;
+    while (is_running) {
+        // get the parent of this node
+        mesh_addr_t parent;
+        esp_mesh_get_parent_bssid(&parent);
+
+        // mac addr of this node to string
+        uint8_t mac[6];
+        esp_wifi_get_mac(WIFI_IF_STA, mac);
+
+        asprintf(&print, "layer:%d Link:" MACSTR "->" MACSTR, esp_mesh_get_layer(), MAC2STR(mac), MAC2STR(parent.addr));
+        ESP_LOGI(MESH_TAG, "Tried to publish topic: graph %s", print);
+        mqtt_app_publish("/topic/graph", print);
+        free(print);
+
+        vTaskDelay(2 * 2000 / portTICK_PERIOD_MS);
     }
     vTaskDelete(NULL);
 }
@@ -183,8 +161,8 @@ esp_err_t esp_mesh_comm_mqtt_task_start(void)
     s_route_table_lock = xSemaphoreCreateMutex();
 
     if (!is_comm_mqtt_task_started) {
-        xTaskCreate(esp_mesh_mqtt_task, "mqtt task", 3072, NULL, 5, NULL);
-        xTaskCreate(check_button, "check button task", 3072, NULL, 5, NULL);
+        xTaskCreate(esp_mesh_mqtt_task, "Mqtt ip mesh task", 3072, NULL, 5, NULL);
+        xTaskCreate(esp_mesh_task_mqtt_graph, "Graph logging task", 3072, NULL, 5, NULL);
         is_comm_mqtt_task_started = true;
     }
     return ESP_OK;
