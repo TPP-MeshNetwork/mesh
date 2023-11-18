@@ -29,6 +29,8 @@
 // CMD_KEYPRESSED: payload is always 6 bytes identifying address of node sending keypress event
 #define CMD_ROUTE_TABLE 0x56
 // CMD_KEYPRESSED: payload is a multiple of 6 listing addresses in a routing table
+
+#define SENSOR_TYPE DHT_TYPE_DHT11
 /*******************************************************
  *                Constants
  *******************************************************/
@@ -99,43 +101,24 @@ void static recv_cb(mesh_addr_t *from, mesh_data_t *data)
     }
 }
 
-static void check_button(void* args)
+static void read_dht11(void* args)
 {
-    static bool old_level = true;
-    bool new_level;
-    bool run_check_button = true;
-    initialise_button();
-    while (run_check_button) {
-        new_level = gpio_get_level(EXAMPLE_BUTTON_GPIO);
-        if (!new_level && old_level) {
-            if (s_route_table_size && !esp_mesh_is_root()) {
-                ESP_LOGW(MESH_TAG, "Key pressed!");
-                mesh_data_t data;
-                uint8_t *my_mac = mesh_netif_get_station_mac();
-                uint8_t data_to_send[6+1] = { CMD_KEYPRESSED, };
-                esp_err_t err;
-                char print[6*3+1]; // MAC addr size + terminator
-                memcpy(data_to_send + 1, my_mac, 6);
-                data.size = 7;
-                data.proto = MESH_PROTO_BIN;
-                data.tos = MESH_TOS_P2P;
-                data.data = data_to_send;
-                snprintf(print, sizeof(print),MACSTR, MAC2STR(my_mac));
-                mqtt_app_publish("/topic/ip_mesh/key_pressed", print);
-                xSemaphoreTake(s_route_table_lock, portMAX_DELAY);
-                for (int i = 0; i < s_route_table_size; i++) {
-                    if (MAC_ADDR_EQUAL(s_route_table[i].addr, my_mac)) {
-                        continue;
-                    }
-                    err = esp_mesh_send(&s_route_table[i], &data, MESH_DATA_P2P, NULL, 0);
-                    ESP_LOGI(MESH_TAG, "Sending to [%d] "
-                            MACSTR ": sent with err code: %d", i, MAC2STR(s_route_table[i].addr), err);
-                }
-                xSemaphoreGive(s_route_table_lock);
-            }
-        }
-        old_level = new_level;
-        vTaskDelay(50 / portTICK_PERIOD_MS);
+    float temperature, humidity;
+    gpio_set_pull_mode(dht_gpio, GPIO_PULLUP_ONLY);
+    while (1) {
+        if (dht_read_float_data(SENSOR_TYPE, CONFIG_EXAMPLE_DATA_GPIO, &humidity, &temperature) == ESP_OK)
+            printf("Humidity: %.1f%% Temp: %.1fC\n", humidity, temperature);
+        else
+            printf("Could not read data from sensor\n");
+
+        asprintf(&print, "layer:%d IP:" IPSTR " Temperature:%.1f%% Humidity:%.1f%%", esp_mesh_get_layer(), IP2STR(&s_current_ip), temperature, humidity);
+        ESP_LOGI(MESH_TAG, "Tried to publish %s", print);
+        mqtt_app_publish("/topic/read_sensor", print);
+        free(print);
+
+        vTaskDelay(pdMS_TO_TICKS(2000));
+
+        //vTaskDelay(50 / portTICK_PERIOD_MS);
     }
     vTaskDelete(NULL);
 
@@ -184,7 +167,7 @@ esp_err_t esp_mesh_comm_mqtt_task_start(void)
 
     if (!is_comm_mqtt_task_started) {
         xTaskCreate(esp_mesh_mqtt_task, "mqtt task", 3072, NULL, 5, NULL);
-        xTaskCreate(check_button, "check button task", 3072, NULL, 5, NULL);
+        xTaskCreate(read_dht11, "Read temperature from sensors", 3072, NULL, 5, NULL);
         is_comm_mqtt_task_started = true;
     }
     return ESP_OK;
