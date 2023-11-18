@@ -17,11 +17,13 @@
 #include "mesh_netif.h"
 #include "driver/gpio.h"
 #include "freertos/semphr.h"
+#include "components/dht.h"
 
 /*******************************************************
  *                Macros
  *******************************************************/
 #define EXAMPLE_BUTTON_GPIO     0
+#define CONFIG_EXAMPLE_DATA_GPIO     4
 
 // commands for internal mesh communication:
 // <CMD> <PAYLOAD>, where CMD is one character, payload is variable dep. on command
