@@ -64,16 +64,6 @@ void mqtt_app_publish(char* topic, char *publish_string);
  *                Function Definitions
  *******************************************************/
 
-static void initialise_button(void)
-{
-    gpio_config_t io_conf = {0};
-    io_conf.intr_type = GPIO_INTR_DISABLE;
-    io_conf.pin_bit_mask = BIT64(EXAMPLE_BUTTON_GPIO);
-    io_conf.mode = GPIO_MODE_INPUT;
-    io_conf.pull_up_en = 1;
-    io_conf.pull_down_en = 0;
-    gpio_config(&io_conf);
-}
 
 void static recv_cb(mesh_addr_t *from, mesh_data_t *data)
 {
@@ -106,7 +96,8 @@ void static recv_cb(mesh_addr_t *from, mesh_data_t *data)
 static void read_dht11(void* args)
 {
     float temperature, humidity;
-    gpio_set_pull_mode(dht_gpio, GPIO_PULLUP_ONLY);
+    char *print;
+
     while (1) {
         if (dht_read_float_data(SENSOR_TYPE, CONFIG_EXAMPLE_DATA_GPIO, &humidity, &temperature) == ESP_OK)
             printf("Humidity: %.1f%% Temp: %.1fC\n", humidity, temperature);
