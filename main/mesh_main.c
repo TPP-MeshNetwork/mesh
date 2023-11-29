@@ -53,7 +53,7 @@ static uint8_t s_mesh_tx_payload[CONFIG_MESH_ROUTE_TABLE_SIZE*6+1];
  *                Function Declarations
  *******************************************************/
 // interaction with public mqtt broker
-void mqtt_app_start(void);
+void mqtt_app_start(uint8_t * mac);
 void mqtt_app_publish(char* topic, char *publish_string);
 
 /*******************************************************
@@ -105,7 +105,9 @@ void esp_mesh_mqtt_task(void *arg)
     char *print;
     mesh_data_t data;
     esp_err_t err;
-    mqtt_app_start();
+    uint8_t mac[6];
+    esp_wifi_get_mac(WIFI_IF_STA, mac);
+    mqtt_app_start(mac);
     while (is_running) {
         asprintf(&print, "layer:%d IP:" IPSTR, esp_mesh_get_layer(), IP2STR(&s_current_ip));
         ESP_LOGI(MESH_TAG, "Tried to publish %s", print);
@@ -135,18 +137,63 @@ void esp_mesh_task_mqtt_graph(void *arg)
 {
     is_running = true;
     char *print;
+    // get the parent of this node
+    mesh_addr_t parent;
+    esp_mesh_get_parent_bssid(&parent);
+
+    // mac addr STA of this node to string
+    uint8_t macSta[6];
+    esp_wifi_get_mac(WIFI_IF_STA, macSta);
+
+    // mac addr AP of this node to string
+    uint8_t macAp[6];
+    esp_wifi_get_mac(WIFI_IF_AP, macAp);
+
     while (is_running) {
-        // get the parent of this node
-        mesh_addr_t parent;
-        esp_mesh_get_parent_bssid(&parent);
+        if(esp_mesh_is_root()) {
+            // the root node has no parent so instead we get the WIFI_IF_AP -> WIFI_IF_STA
+            asprintf(&print, "layer:%d root:true Link:" MACSTR "->" MACSTR, esp_mesh_get_layer(), MAC2STR(macSta), MAC2STR(macAp));
+        } else {
+            asprintf(&print, "layer:%d root:false Link:" MACSTR "->" MACSTR, esp_mesh_get_layer(), MAC2STR(parent.addr), MAC2STR(macAp));
+        }
 
-        // mac addr of this node to string
-        uint8_t mac[6];
-        esp_wifi_get_mac(WIFI_IF_STA, mac);
-
-        asprintf(&print, "layer:%d Link:" MACSTR "->" MACSTR, esp_mesh_get_layer(), MAC2STR(mac), MAC2STR(parent.addr));
         ESP_LOGI(MESH_TAG, "Tried to publish topic: graph %s", print);
         mqtt_app_publish("/topic/graph", print);
+        free(print);
+
+        // send keepalive with AP mac
+        asprintf(&print, "keepalive: " MACSTR, MAC2STR(macAp));
+        ESP_LOGI(MESH_TAG, "Tried to publish topic: keepalive %s", print);
+        mqtt_app_publish("/topic/keepalives", print);
+        free(print);
+
+        vTaskDelay(2 * 2000 / portTICK_PERIOD_MS);
+    }
+    vTaskDelete(NULL);
+}
+
+void esp_mesh_task_mqtt_keepalive(void *arg)
+{
+    is_running = true;
+    char *print;
+    // mac addr of this node to string
+    uint8_t mac[6];
+    esp_wifi_get_mac(WIFI_IF_AP, mac);
+    // get the parent of this node
+    mesh_addr_t parent;
+    esp_mesh_get_parent_bssid(&parent);
+
+    while (is_running) {
+        // send keepalive this mac
+        asprintf(&print, "keepalive: " MACSTR, MAC2STR(mac));
+        ESP_LOGI(MESH_TAG, "Tried to publish topic: keepalive %s", print);
+        mqtt_app_publish("/topic/keepalive", print);
+        free(print);
+
+        // send keepalive this parent mac
+        asprintf(&print, "keepalive: " MACSTR, MAC2STR(parent.addr));
+        ESP_LOGI(MESH_TAG, "Tried to publish topic: keepalive %s", print);
+        mqtt_app_publish("/topic/keepalive", print);
         free(print);
 
         vTaskDelay(2 * 2000 / portTICK_PERIOD_MS);
@@ -163,6 +210,7 @@ esp_err_t esp_mesh_comm_mqtt_task_start(void)
     if (!is_comm_mqtt_task_started) {
         xTaskCreate(esp_mesh_mqtt_task, "Mqtt ip mesh task", 3072, NULL, 5, NULL);
         xTaskCreate(esp_mesh_task_mqtt_graph, "Graph logging task", 3072, NULL, 5, NULL);
+        xTaskCreate(esp_mesh_task_mqtt_keepalive, "Keepalive task", 3072, NULL, 5, NULL);
         is_comm_mqtt_task_started = true;
     }
     return ESP_OK;
