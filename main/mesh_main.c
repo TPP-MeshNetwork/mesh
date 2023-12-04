@@ -17,7 +17,7 @@
 #include "mesh_netif.h"
 #include "driver/gpio.h"
 #include "freertos/semphr.h"
-#include "components/dht.h"
+#include <components/dht.h>
 
 /*******************************************************
  *                Macros
