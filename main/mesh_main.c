@@ -23,7 +23,7 @@
  *                Macros
  *******************************************************/
 #define EXAMPLE_BUTTON_GPIO     0
-#define CONFIG_EXAMPLE_DATA_GPIO     4
+#define CONFIG_EXAMPLE_DATA_GPIO     33
 
 // commands for internal mesh communication:
 // <CMD> <PAYLOAD>, where CMD is one character, payload is variable dep. on command
@@ -104,7 +104,7 @@ static void read_dht11(void* args)
         else
             printf("Could not read data from sensor\n");
 
-        asprintf(&print, "layer:%d IP:" IPSTR " Temperature:%.1f%% Humidity:%.1f%%", esp_mesh_get_layer(), IP2STR(&s_current_ip), temperature, humidity);
+        asprintf(&print, "layer:%d IP:" IPSTR " Temperature: %.1f Humidity: %.1f", esp_mesh_get_layer(), IP2STR(&s_current_ip), temperature, humidity);
         ESP_LOGI(MESH_TAG, "Tried to publish %s", print);
         mqtt_app_publish("/topic/read_sensor", print);
         free(print);
