@@ -91,8 +91,10 @@ void mqtt_app_start(uint8_t mac[6]) {
         // .broker.verification.certificate = (const char *)mqtt_eclipse_org_pem_start,
         .session.last_will.topic = last_will_topic,
         .session.last_will.msg = last_will_message,
-        .session.last_will.retain = 1,
+        .session.last_will.retain = 0,
         .session.last_will.qos = 1,
+        .session.protocol_ver = MQTT_PROTOCOL_V_3_1_1,
+        .session.keepalive = 30,
     };
 
     s_client = esp_mqtt_client_init(&mqtt_cfg);
