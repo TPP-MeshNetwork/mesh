@@ -93,28 +93,46 @@ void static recv_cb(mesh_addr_t *from, mesh_data_t *data)
     }
 }
 
-static void read_dht11(void* args)
+static void read_temperature(void* args)
 {
     float temperature, humidity;
     char *print;
 
     while (1) {
         if (dht_read_float_data(SENSOR_TYPE, CONFIG_EXAMPLE_DATA_GPIO, &humidity, &temperature) == ESP_OK)
-            printf("Humidity: %.1f%% Temp: %.1fC\n", humidity, temperature);
+            printf("Temp: %.1fC\n", temperature);
         else
             printf("Could not read data from sensor\n");
 
-        asprintf(&print, "layer:%d IP:" IPSTR " Temperature: %.1f Humidity: %.1f", esp_mesh_get_layer(), IP2STR(&s_current_ip), temperature, humidity);
+        asprintf(&print, "{'layer': '%d', 'IP': '" IPSTR "', 'temperature': %.1f}", esp_mesh_get_layer(), IP2STR(&s_current_ip), temperature);
         ESP_LOGI(MESH_TAG, "Tried to publish %s", print);
-        mqtt_app_publish("/topic/read_sensor", print);
+        mqtt_app_publish("/topic/temperature", print);
         free(print);
 
         vTaskDelay(pdMS_TO_TICKS(2000));
-
-        //vTaskDelay(50 / portTICK_PERIOD_MS);
     }
     vTaskDelete(NULL);
+}
 
+static void read_humidity(void* args)
+{
+    float temperature, humidity;
+    char *print;
+
+    while (1) {
+        if (dht_read_float_data(SENSOR_TYPE, CONFIG_EXAMPLE_DATA_GPIO, &humidity, &temperature) == ESP_OK)
+            printf("Humidity: %.1f \n", humidity);
+        else
+            printf("Could not read data from sensor\n");
+
+        asprintf(&print, "{'layer': '%d', 'IP': '" IPSTR "', 'humidity': %.1f}", esp_mesh_get_layer(), IP2STR(&s_current_ip), humidity);
+        ESP_LOGI(MESH_TAG, "Tried to publish %s", print);
+        mqtt_app_publish("/topic/humidity", print);
+        free(print);
+
+        vTaskDelay(pdMS_TO_TICKS(2000));
+    }
+    vTaskDelete(NULL);
 }
 
 
@@ -160,7 +178,8 @@ esp_err_t esp_mesh_comm_mqtt_task_start(void)
 
     if (!is_comm_mqtt_task_started) {
         xTaskCreate(esp_mesh_mqtt_task, "mqtt task", 3072, NULL, 5, NULL);
-        xTaskCreate(read_dht11, "Read temperature from sensors", 3072, NULL, 5, NULL);
+        xTaskCreate(read_temperature, "Read temperature from sensor", 3072, NULL, 5, NULL);
+        xTaskCreate(read_humidity, "Read humidity from sensor", 3072, NULL, 5, NULL);
         is_comm_mqtt_task_started = true;
     }
     return ESP_OK;
