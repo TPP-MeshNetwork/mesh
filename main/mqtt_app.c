@@ -13,6 +13,7 @@
 #include "esp_tls.h"
 
 #include "mqtt_client.h"
+#include "esp_mac.h"
 
 static const char *TAG = "mesh_mqtt";
 static esp_mqtt_client_handle_t s_client = NULL;
@@ -68,8 +69,18 @@ void mqtt_app_publish(char* topic, char *publish_string)
     }
 }
 
-void mqtt_app_start(void)
-{
+void mqtt_app_start(uint8_t mac[6]) {
+
+    if (mac == NULL) {
+        ESP_LOGE(TAG, "MAC address is NULL must provide a valid mac address to start Mqtt");
+        return;
+    }
+    // last will topic and message for client disconnection
+    char * last_will_topic;
+    char * last_will_message;
+    asprintf(&last_will_topic, "/topic/keepalive");
+    asprintf(&last_will_message, "offline: " MACSTR, MAC2STR(mac));
+
     // static const uint8_t mqtt_eclipse_org_pem_start[]  = "-----BEGIN CERTIFICATE-----\n" CONFIG_MQTT_BROKER_CERTIFICATE_OVERRIDE "\n-----END CERTIFICATE-----";
 
     ESP_LOGI(TAG, "Configuring MQTT Broker to %s", CONFIG_MQTT_BROKER_URI);
@@ -78,10 +89,17 @@ void mqtt_app_start(void)
         .credentials.username = CONFIG_MQTT_BROKER_USERNAME,
         .credentials.authentication.password = CONFIG_MQTT_BROKER_PASSWORD,
         // .broker.verification.certificate = (const char *)mqtt_eclipse_org_pem_start,
-
+        .session.last_will.topic = last_will_topic,
+        .session.last_will.msg = last_will_message,
+        .session.last_will.retain = 0,
+        .session.last_will.qos = 1,
+        .session.protocol_ver = MQTT_PROTOCOL_V_3_1_1,
+        .session.keepalive = 30,
     };
 
     s_client = esp_mqtt_client_init(&mqtt_cfg);
     esp_mqtt_client_register_event(s_client, ESP_EVENT_ANY_ID, mqtt_event_handler, s_client);
     esp_mqtt_client_start(s_client);
+    free(last_will_topic);
+    free(last_will_message);
 }
