@@ -100,9 +100,9 @@ static void read_sensor_data(void* args)
 
     while (1) {
         if (dht_read_float_data(SENSOR_TYPE, CONFIG_EXAMPLE_DATA_GPIO, &humidity, &temperature) == ESP_OK)
-            printf("Temp: %.1fC\n", temperature);
+            ESP_LOGI("Temp: %.1fC\n", temperature);
         else
-            printf("Could not read data from sensor\n");
+            ESP_LOGI("Could not read data from sensor\n");
 
         asprintf(&temperature_print, "{'layer': '%d', 'IP': '" IPSTR "', 'temperature': %.1f}", esp_mesh_get_layer(), IP2STR(&s_current_ip), temperature);
         ESP_LOGI(MESH_TAG, "Tried to publish %s", temperature_print);
