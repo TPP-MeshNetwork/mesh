@@ -22,8 +22,7 @@
 /*******************************************************
  *                Macros
  *******************************************************/
-#define EXAMPLE_BUTTON_GPIO     0
-#define CONFIG_EXAMPLE_DATA_GPIO     33
+#define CONFIG_EXAMPLE_DATA_GPIO     DATA_GPIO
 
 // commands for internal mesh communication:
 // <CMD> <PAYLOAD>, where CMD is one character, payload is variable dep. on command
@@ -32,7 +31,7 @@
 #define CMD_ROUTE_TABLE 0x56
 // CMD_KEYPRESSED: payload is a multiple of 6 listing addresses in a routing table
 
-#define SENSOR_TYPE DHT_TYPE_DHT11
+#define SENSOR_TYPE SENSOR_TYPE_DATA
 /*******************************************************
  *                Constants
  *******************************************************/
@@ -93,10 +92,11 @@ void static recv_cb(mesh_addr_t *from, mesh_data_t *data)
     }
 }
 
-static void read_temperature(void* args)
+static void read_sensor_data(void* args)
 {
     float temperature, humidity;
-    char *print;
+    char *temperature_print;
+    char *humidity_print;
 
     while (1) {
         if (dht_read_float_data(SENSOR_TYPE, CONFIG_EXAMPLE_DATA_GPIO, &humidity, &temperature) == ESP_OK)
@@ -104,31 +104,15 @@ static void read_temperature(void* args)
         else
             printf("Could not read data from sensor\n");
 
-        asprintf(&print, "{'layer': '%d', 'IP': '" IPSTR "', 'temperature': %.1f}", esp_mesh_get_layer(), IP2STR(&s_current_ip), temperature);
-        ESP_LOGI(MESH_TAG, "Tried to publish %s", print);
-        mqtt_app_publish("/topic/temperature", print);
-        free(print);
+        asprintf(&temperature_print, "{'layer': '%d', 'IP': '" IPSTR "', 'temperature': %.1f}", esp_mesh_get_layer(), IP2STR(&s_current_ip), temperature);
+        ESP_LOGI(MESH_TAG, "Tried to publish %s", temperature_print);
+        mqtt_app_publish("/topic/temperature", temperature_print);
+        free(temperature_print);
 
-        vTaskDelay(pdMS_TO_TICKS(2000));
-    }
-    vTaskDelete(NULL);
-}
-
-static void read_humidity(void* args)
-{
-    float temperature, humidity;
-    char *print;
-
-    while (1) {
-        if (dht_read_float_data(SENSOR_TYPE, CONFIG_EXAMPLE_DATA_GPIO, &humidity, &temperature) == ESP_OK)
-            printf("Humidity: %.1f \n", humidity);
-        else
-            printf("Could not read data from sensor\n");
-
-        asprintf(&print, "{'layer': '%d', 'IP': '" IPSTR "', 'humidity': %.1f}", esp_mesh_get_layer(), IP2STR(&s_current_ip), humidity);
-        ESP_LOGI(MESH_TAG, "Tried to publish %s", print);
-        mqtt_app_publish("/topic/humidity", print);
-        free(print);
+        asprintf(&humidity_print, "{'layer': '%d', 'IP': '" IPSTR "', 'humidity': %.1f}", esp_mesh_get_layer(), IP2STR(&s_current_ip), humidity);
+        ESP_LOGI(MESH_TAG, "Tried to publish %s", humidity_print);
+        mqtt_app_publish("/topic/humidity", humidity_print);
+        free(humidity_print);
 
         vTaskDelay(pdMS_TO_TICKS(2000));
     }
@@ -178,8 +162,7 @@ esp_err_t esp_mesh_comm_mqtt_task_start(void)
 
     if (!is_comm_mqtt_task_started) {
         xTaskCreate(esp_mesh_mqtt_task, "mqtt task", 3072, NULL, 5, NULL);
-        xTaskCreate(read_temperature, "Read temperature from sensor", 3072, NULL, 5, NULL);
-        xTaskCreate(read_humidity, "Read humidity from sensor", 3072, NULL, 5, NULL);
+        xTaskCreate(read_sensor_data, "Read sensor data from sensor", 3072, NULL, 5, NULL);
         is_comm_mqtt_task_started = true;
     }
     return ESP_OK;
