@@ -17,11 +17,12 @@
 #include "mesh_netif.h"
 #include "driver/gpio.h"
 #include "freertos/semphr.h"
+#include <components/dht.h>
 
 /*******************************************************
  *                Macros
  *******************************************************/
-#define EXAMPLE_BUTTON_GPIO     0
+#define CONFIG_EXAMPLE_DATA_GPIO     DATA_GPIO
 
 // commands for internal mesh communication:
 // <CMD> <PAYLOAD>, where CMD is one character, payload is variable dep. on command
@@ -29,6 +30,8 @@
 // CMD_KEYPRESSED: payload is always 6 bytes identifying address of node sending keypress event
 #define CMD_ROUTE_TABLE 0x56
 // CMD_KEYPRESSED: payload is a multiple of 6 listing addresses in a routing table
+
+#define SENSOR_TYPE SENSOR_TYPE_DATA
 /*******************************************************
  *                Constants
  *******************************************************/
@@ -60,16 +63,6 @@ void mqtt_app_publish(char* topic, char *publish_string);
  *                Function Definitions
  *******************************************************/
 
-// static void initialise_button(void)
-// {
-//     gpio_config_t io_conf = {0};
-//     io_conf.intr_type = GPIO_INTR_DISABLE;
-//     io_conf.pin_bit_mask = BIT64(EXAMPLE_BUTTON_GPIO);
-//     io_conf.mode = GPIO_MODE_INPUT;
-//     io_conf.pull_up_en = 1;
-//     io_conf.pull_down_en = 0;
-//     gpio_config(&io_conf);
-// }
 
 void static recv_cb(mesh_addr_t *from, mesh_data_t *data)
 {
@@ -98,6 +91,34 @@ void static recv_cb(mesh_addr_t *from, mesh_data_t *data)
         ESP_LOGE(MESH_TAG, "Error in receiving raw mesh data: Unknown command");
     }
 }
+
+static void read_sensor_data(void* args)
+{
+    float temperature, humidity;
+    char *temperature_print;
+    char *humidity_print;
+
+    while (1) {
+        if (dht_read_float_data(SENSOR_TYPE, CONFIG_EXAMPLE_DATA_GPIO, &humidity, &temperature) == ESP_OK)
+            ESP_LOGI("Temp: %.1fC\n", temperature);
+        else
+            ESP_LOGI("Could not read data from sensor\n");
+
+        asprintf(&temperature_print, "{'layer': '%d', 'IP': '" IPSTR "', 'temperature': %.1f}", esp_mesh_get_layer(), IP2STR(&s_current_ip), temperature);
+        ESP_LOGI(MESH_TAG, "Tried to publish %s", temperature_print);
+        mqtt_app_publish("/topic/temperature", temperature_print);
+        free(temperature_print);
+
+        asprintf(&humidity_print, "{'layer': '%d', 'IP': '" IPSTR "', 'humidity': %.1f}", esp_mesh_get_layer(), IP2STR(&s_current_ip), humidity);
+        ESP_LOGI(MESH_TAG, "Tried to publish %s", humidity_print);
+        mqtt_app_publish("/topic/humidity", humidity_print);
+        free(humidity_print);
+
+        vTaskDelay(pdMS_TO_TICKS(2000));
+    }
+    vTaskDelete(NULL);
+}
+
 
 void esp_mesh_mqtt_task(void *arg)
 {
@@ -208,7 +229,8 @@ esp_err_t esp_mesh_comm_mqtt_task_start(void)
     s_route_table_lock = xSemaphoreCreateMutex();
 
     if (!is_comm_mqtt_task_started) {
-        xTaskCreate(esp_mesh_mqtt_task, "Mqtt ip mesh task", 3072, NULL, 5, NULL);
+        xTaskCreate(esp_mesh_mqtt_task, "mqtt task", 3072, NULL, 5, NULL);
+        xTaskCreate(read_sensor_data, "Read sensor data from sensor", 3072, NULL, 5, NULL);
         xTaskCreate(esp_mesh_task_mqtt_graph, "Graph logging task", 3072, NULL, 5, NULL);
         xTaskCreate(esp_mesh_task_mqtt_keepalive, "Keepalive task", 3072, NULL, 5, NULL);
         is_comm_mqtt_task_started = true;
