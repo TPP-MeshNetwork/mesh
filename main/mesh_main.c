@@ -22,8 +22,6 @@
 /*******************************************************
  *                Macros
  *******************************************************/
-#define CONFIG_EXAMPLE_DATA_GPIO     DATA_GPIO
-
 // commands for internal mesh communication:
 // <CMD> <PAYLOAD>, where CMD is one character, payload is variable dep. on command
 #define CMD_KEYPRESSED 0x55
@@ -31,7 +29,8 @@
 #define CMD_ROUTE_TABLE 0x56
 // CMD_KEYPRESSED: payload is a multiple of 6 listing addresses in a routing table
 
-#define SENSOR_TYPE SENSOR_TYPE_DATA
+#define CONFIG_EXAMPLE_DATA_GPIO 33
+#define SENSOR_TYPE DHT_TYPE_DHT11
 /*******************************************************
  *                Constants
  *******************************************************/
@@ -100,9 +99,9 @@ static void read_sensor_data(void* args)
 
     while (1) {
         if (dht_read_float_data(SENSOR_TYPE, CONFIG_EXAMPLE_DATA_GPIO, &humidity, &temperature) == ESP_OK)
-            ESP_LOGI("Temp: %.1fC\n", temperature);
+            ESP_LOGI(MESH_TAG, "Temp: %.1fC\n", temperature);
         else
-            ESP_LOGI("Could not read data from sensor\n");
+            ESP_LOGI(MESH_TAG, "Could not read data from sensor\n");
 
         asprintf(&temperature_print, "{'layer': '%d', 'IP': '" IPSTR "', 'temperature': %.1f}", esp_mesh_get_layer(), IP2STR(&s_current_ip), temperature);
         ESP_LOGI(MESH_TAG, "Tried to publish %s", temperature_print);
