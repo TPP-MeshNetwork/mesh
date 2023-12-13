@@ -61,12 +61,20 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
     mqtt_event_handler_cb(event_data);
 }
 
-void mqtt_app_publish(char* topic, char *publish_string)
+void mqtt_app_publish(char* topic, const char* publish_prefix, char *publish_string)
 {
+    // concatenate prefix and topic
+    if(publish_prefix == NULL) {
+        publish_prefix = "";
+    }
+    char * full_message;
+    asprintf(&full_message, "%s %s", publish_prefix, publish_string);
+    
     if (s_client) {
-        int msg_id = esp_mqtt_client_publish(s_client, topic, publish_string, 0, 1, 0);
+        int msg_id = esp_mqtt_client_publish(s_client, topic, full_message, 0, 1, 0);
         ESP_LOGI(TAG, "sent publish returned msg_id=%d", msg_id);
     }
+    free(full_message);
 }
 
 void mqtt_app_start(uint8_t mac[6]) {
