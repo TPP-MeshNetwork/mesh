@@ -181,12 +181,6 @@ void esp_mesh_task_mqtt_graph(void *arg)
         mqtt_app_publish("/topic/graph", print);
         free(print);
 
-        // send keepalive with AP mac
-        asprintf(&print, "keepalive: " MACSTR, MAC2STR(macAp));
-        ESP_LOGI(MESH_TAG, "Tried to publish topic: keepalive %s", print);
-        mqtt_app_publish("/topic/keepalive", print);
-        free(print);
-
         vTaskDelay(2 * 2000 / portTICK_PERIOD_MS);
     }
     vTaskDelete(NULL);
