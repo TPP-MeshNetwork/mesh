@@ -93,11 +93,12 @@ void static recv_cb(mesh_addr_t *from, mesh_data_t *data)
 
 static void read_sensor_data(void* args)
 {
-    char *temperature_print;
+    char *sensor_print;
     const int max_tries = 10;
     int tries = 0;
 
     const char *sensor_name[2] = {"temperature", "humidity"};
+    const char *sensor_topic[2] = {"/topic/temperature", "/topic/humidity"};
     size_t sensor_length = sizeof(sensor_name) / sizeof(sensor_name[0]);
     float sensor_data[sensor_length];
 
@@ -113,10 +114,10 @@ static void read_sensor_data(void* args)
         }
 
         for (size_t i = 0; i < sensor_length; i++) {
-            asprintf(&temperature_print, "{'layer': '%d', 'IP': '" IPSTR "', '%s': %.1f}", esp_mesh_get_layer(), IP2STR(&s_current_ip), sensor_name[i] , sensor_data[i]);
-            ESP_LOGI(MESH_TAG, "Tried to publish %s", temperature_print);
-            mqtt_app_publish("/topic/temperature", MESH_TAG, temperature_print);
-            free(temperature_print);
+            asprintf(&sensor_print, "{'layer': '%d', 'IP': '" IPSTR "', '%s': %.1f}", esp_mesh_get_layer(), IP2STR(&s_current_ip), sensor_name[i] , sensor_data[i]);
+            ESP_LOGI(MESH_TAG, "Tried to publish %s", sensor_print);
+            mqtt_app_publish(sensor_topic[i], MESH_TAG, sensor_print);
+            free(sensor_print);
         }
 
 
