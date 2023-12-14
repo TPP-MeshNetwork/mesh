@@ -22,8 +22,6 @@
 /*******************************************************
  *                Macros
  *******************************************************/
-#define CONFIG_EXAMPLE_DATA_GPIO     DATA_GPIO
-
 // commands for internal mesh communication:
 // <CMD> <PAYLOAD>, where CMD is one character, payload is variable dep. on command
 #define CMD_KEYPRESSED 0x55
@@ -31,13 +29,14 @@
 #define CMD_ROUTE_TABLE 0x56
 // CMD_KEYPRESSED: payload is a multiple of 6 listing addresses in a routing table
 
-#define SENSOR_TYPE SENSOR_TYPE_DATA
+#define CONFIG_EXAMPLE_DATA_GPIO 33
+#define SENSOR_TYPE DHT_TYPE_DHT11
 /*******************************************************
  *                Constants
  *******************************************************/
 #define MESH_ID_SIZE 6
 static const char *MESH_TAG = "mesh_main";
-static const uint8_t MESH_ID[MESH_ID_SIZE] = { 0x77, 0x77, 0x77, 0x77, 0x77, 0x76};
+static const uint8_t MESH_ID[MESH_ID_SIZE] = { 0x77, 0x77, 0x77, 0x77, 0x77, 0x76 };
 
 /*******************************************************
  *                Variable Definitions
@@ -57,7 +56,7 @@ static uint8_t s_mesh_tx_payload[CONFIG_MESH_ROUTE_TABLE_SIZE*6+1];
  *******************************************************/
 // interaction with public mqtt broker
 void mqtt_app_start(uint8_t * mac);
-void mqtt_app_publish(char* topic, char *publish_string);
+void mqtt_app_publish(char* topic, const char *publish_prefix, char *publish_string);
 
 /*******************************************************
  *                Function Definitions
@@ -94,25 +93,33 @@ void static recv_cb(mesh_addr_t *from, mesh_data_t *data)
 
 static void read_sensor_data(void* args)
 {
-    float temperature, humidity;
-    char *temperature_print;
-    char *humidity_print;
+    char *sensor_print;
+    const int max_tries = 10;
+    int tries = 0;
+
+    const char *sensor_name[2] = {"temperature", "humidity"};
+    const char *sensor_topic[2] = {"/topic/temperature", "/topic/humidity"};
+    size_t sensor_length = sizeof(sensor_name) / sizeof(sensor_name[0]);
+    float sensor_data[sensor_length];
+
 
     while (1) {
-        if (dht_read_float_data(SENSOR_TYPE, CONFIG_EXAMPLE_DATA_GPIO, &humidity, &temperature) == ESP_OK)
-            ESP_LOGI("Temp: %.1fC\n", temperature);
-        else
-            ESP_LOGI("Could not read data from sensor\n");
+        if (dht_read_float_data(SENSOR_TYPE, CONFIG_EXAMPLE_DATA_GPIO, sensor_data, sensor_data+1) == ESP_OK)
+            ESP_LOGI(MESH_TAG, "%s: %.1fC\n", sensor_name[0],sensor_data[0]);
+        else {
+            // stopping reading sensor if it fails too many times
+            tries++;
+            if(tries > max_tries) break;
+            ESP_LOGI(MESH_TAG, "Could not read data from sensor\n");
+        }
 
-        asprintf(&temperature_print, "{'layer': '%d', 'IP': '" IPSTR "', 'temperature': %.1f}", esp_mesh_get_layer(), IP2STR(&s_current_ip), temperature);
-        ESP_LOGI(MESH_TAG, "Tried to publish %s", temperature_print);
-        mqtt_app_publish("/topic/temperature", temperature_print);
-        free(temperature_print);
+        for (size_t i = 0; i < sensor_length; i++) {
+            asprintf(&sensor_print, "{'layer': '%d', 'IP': '" IPSTR "', '%s': %.1f}", esp_mesh_get_layer(), IP2STR(&s_current_ip), sensor_name[i] , sensor_data[i]);
+            ESP_LOGI(MESH_TAG, "Tried to publish %s", sensor_print);
+            mqtt_app_publish(sensor_topic[i], MESH_TAG, sensor_print);
+            free(sensor_print);
+        }
 
-        asprintf(&humidity_print, "{'layer': '%d', 'IP': '" IPSTR "', 'humidity': %.1f}", esp_mesh_get_layer(), IP2STR(&s_current_ip), humidity);
-        ESP_LOGI(MESH_TAG, "Tried to publish %s", humidity_print);
-        mqtt_app_publish("/topic/humidity", humidity_print);
-        free(humidity_print);
 
         vTaskDelay(pdMS_TO_TICKS(2000));
     }
@@ -132,7 +139,7 @@ void esp_mesh_mqtt_task(void *arg)
     while (is_running) {
         asprintf(&print, "layer:%d IP:" IPSTR, esp_mesh_get_layer(), IP2STR(&s_current_ip));
         ESP_LOGI(MESH_TAG, "Tried to publish %s", print);
-        mqtt_app_publish("/topic/ip_mesh", print);
+        mqtt_app_publish("/topic/ip_mesh", MESH_TAG, print);
         free(print);
         if (esp_mesh_is_root()) {
             esp_mesh_get_routing_table((mesh_addr_t *) &s_route_table,
@@ -179,13 +186,7 @@ void esp_mesh_task_mqtt_graph(void *arg)
         }
 
         ESP_LOGI(MESH_TAG, "Tried to publish topic: graph %s", print);
-        mqtt_app_publish("/topic/graph", print);
-        free(print);
-
-        // send keepalive with AP mac
-        asprintf(&print, "keepalive: " MACSTR, MAC2STR(macAp));
-        ESP_LOGI(MESH_TAG, "Tried to publish topic: keepalive %s", print);
-        mqtt_app_publish("/topic/keepalive", print);
+        mqtt_app_publish("/topic/graph", MESH_TAG, print);
         free(print);
 
         vTaskDelay(2 * 2000 / portTICK_PERIOD_MS);
@@ -197,25 +198,26 @@ void esp_mesh_task_mqtt_keepalive(void *arg)
 {
     is_running = true;
     char *print;
+    uint8_t macList[2][6];
+
     // mac addr of this node to string
-    uint8_t mac[6];
-    esp_wifi_get_mac(WIFI_IF_AP, mac);
+    esp_wifi_get_mac(WIFI_IF_AP, macList[0]);
     // get the parent of this node
     mesh_addr_t parent;
     esp_mesh_get_parent_bssid(&parent);
+    memcpy(macList[1], parent.addr, 6);
 
+
+    size_t macListLength = sizeof(macList) / sizeof(macList[0]);
     while (is_running) {
-        // send keepalive this mac
-        asprintf(&print, "keepalive: " MACSTR, MAC2STR(mac));
-        ESP_LOGI(MESH_TAG, "Tried to publish topic: keepalive %s", print);
-        mqtt_app_publish("/topic/keepalive", print);
-        free(print);
 
-        // send keepalive this parent mac
-        asprintf(&print, "keepalive: " MACSTR, MAC2STR(parent.addr));
-        ESP_LOGI(MESH_TAG, "Tried to publish topic: keepalive %s", print);
-        mqtt_app_publish("/topic/keepalive", print);
-        free(print);
+        for (size_t i = 0; i < macListLength; i++) {
+            // send keepalive this mac
+            asprintf(&print, "keepalive: " MACSTR, MAC2STR(macList[i]));
+            ESP_LOGI(MESH_TAG, "Tried to publish topic: keepalive %s", print);
+            mqtt_app_publish("/topic/keepalive", MESH_TAG, print);
+            free(print);
+        }
 
         vTaskDelay(2 * 2000 / portTICK_PERIOD_MS);
     }
