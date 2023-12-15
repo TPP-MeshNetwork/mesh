@@ -104,7 +104,7 @@ static void read_sensor_data(void* args)
 
 
     while (1) {
-        if (dht_read_float_data(SENSOR_TYPE, CONFIG_EXAMPLE_DATA_GPIO, sensor_data, sensor_data+1) == ESP_OK)
+        if (dht_read_float_data(SENSOR_TYPE, CONFIG_EXAMPLE_DATA_GPIO, sensor_data+1, sensor_data) == ESP_OK)
             ESP_LOGI(MESH_TAG, "%s: %.1fC\n", sensor_name[0],sensor_data[0]);
         else {
             // stopping reading sensor if it fails too many times
@@ -114,7 +114,7 @@ static void read_sensor_data(void* args)
         }
 
         for (size_t i = 0; i < sensor_length; i++) {
-            asprintf(&sensor_print, "{'layer': '%d', 'IP': '" IPSTR "', '%s': %.1f}", esp_mesh_get_layer(), IP2STR(&s_current_ip), sensor_name[i] , sensor_data[i]);
+            asprintf(&sensor_print, "{'factoryTag': '" IPSTR "', '%s': %.1f}", IP2STR(&s_current_ip), sensor_name[i] , sensor_data[i]);
             ESP_LOGI(MESH_TAG, "Tried to publish %s", sensor_print);
             mqtt_app_publish(sensor_topic[i], MESH_TAG, sensor_print);
             free(sensor_print);
@@ -137,7 +137,7 @@ void esp_mesh_mqtt_task(void *arg)
     esp_wifi_get_mac(WIFI_IF_STA, mac);
     mqtt_app_start(mac);
     while (is_running) {
-        asprintf(&print, "layer:%d IP:" IPSTR, esp_mesh_get_layer(), IP2STR(&s_current_ip));
+        asprintf(&print, "{'layer': %d, 'IP': '" IPSTR "'}", esp_mesh_get_layer(), IP2STR(&s_current_ip));
         ESP_LOGI(MESH_TAG, "Tried to publish %s", print);
         mqtt_app_publish("/topic/ip_mesh", MESH_TAG, print);
         free(print);
@@ -180,9 +180,9 @@ void esp_mesh_task_mqtt_graph(void *arg)
     while (is_running) {
         if(esp_mesh_is_root()) {
             // the root node has no parent so instead we get the WIFI_IF_AP -> WIFI_IF_STA
-            asprintf(&print, "layer:%d root:true Link:" MACSTR "->" MACSTR, esp_mesh_get_layer(), MAC2STR(macSta), MAC2STR(macAp));
+            asprintf(&print, "{'layer': %d, 'root': true, 'macSta': '" MACSTR "', 'macSoftap': '" MACSTR "'}", esp_mesh_get_layer(), MAC2STR(macSta), MAC2STR(macAp));
         } else {
-            asprintf(&print, "layer:%d root:false Link:" MACSTR "->" MACSTR, esp_mesh_get_layer(), MAC2STR(parent.addr), MAC2STR(macAp));
+            asprintf(&print, "{'layer': %d, 'root': false, 'macSta': '" MACSTR "', 'macSoftap': '" MACSTR "'}", esp_mesh_get_layer(), MAC2STR(parent.addr), MAC2STR(macAp));
         }
 
         ESP_LOGI(MESH_TAG, "Tried to publish topic: graph %s", print);
@@ -213,7 +213,7 @@ void esp_mesh_task_mqtt_keepalive(void *arg)
 
         for (size_t i = 0; i < macListLength; i++) {
             // send keepalive this mac
-            asprintf(&print, "keepalive: " MACSTR, MAC2STR(macList[i]));
+            asprintf(&print, "{'macSta': '" MACSTR "'}", MAC2STR(macList[i]));
             ESP_LOGI(MESH_TAG, "Tried to publish topic: keepalive %s", print);
             mqtt_app_publish("/topic/keepalive", MESH_TAG, print);
             free(print);
