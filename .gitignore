@@ -22,3 +22,5 @@ partitions.csv
 *.o
 *.pyc
 
+main/secret.h
+
