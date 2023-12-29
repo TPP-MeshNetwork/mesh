@@ -94,8 +94,8 @@ void mqtt_app_start(uint8_t mac[6]) {
     ESP_LOGI(TAG, "Configuring MQTT Broker to %s", CONFIG_MQTT_BROKER_URI);
     esp_mqtt_client_config_t mqtt_cfg = {
         .broker.address.uri = CONFIG_MQTT_BROKER_URI,
-        .credentials.username = CONFIG_MQTT_BROKER_USERNAME,
-        .credentials.authentication.password = CONFIG_MQTT_BROKER_PASSWORD,
+        //.credentials.username = CONFIG_MQTT_BROKER_USERNAME,
+        //.credentials.authentication.password = CONFIG_MQTT_BROKER_PASSWORD,
         // .broker.verification.certificate = (const char *)mqtt_eclipse_org_pem_start,
         .session.last_will.topic = last_will_topic,
         .session.last_will.msg = last_will_message,
@@ -103,6 +103,9 @@ void mqtt_app_start(uint8_t mac[6]) {
         .session.last_will.qos = 1,
         .session.protocol_ver = MQTT_PROTOCOL_V_3_1_1,
         .session.keepalive = 30,
+        .credentials.authentication.certificate = AWS_CERT_CRT,
+        .credentials.authentication.key = AWS_CERT_PRIVATE,
+
     };
 
     s_client = esp_mqtt_client_init(&mqtt_cfg);
