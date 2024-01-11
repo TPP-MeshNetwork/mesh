@@ -14,6 +14,9 @@
 
 #include "mqtt_client.h"
 #include "esp_mac.h"
+#include "nvs_flash.h"
+#include "nvs_helper.h"
+
 
 static const char *TAG = "mesh_mqtt";
 static esp_mqtt_client_handle_t s_client = NULL;
@@ -61,7 +64,7 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
     mqtt_event_handler_cb(event_data);
 }
 
-void mqtt_app_publish(char* topic, const char* publish_prefix, char *publish_string)
+void mqtt_app_publish(const char* topic, const char* publish_prefix, char *publish_string)
 {
     // concatenate prefix and topic
     if(publish_prefix == NULL) {
@@ -83,29 +86,60 @@ void mqtt_app_start(uint8_t mac[6]) {
         ESP_LOGE(TAG, "MAC address is NULL must provide a valid mac address to start Mqtt");
         return;
     }
+
+    // get certificates from nvs
+    nvs_handle handle;
+    esp_err_t err = nvs_open("certs", NVS_READONLY, &handle);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Error opening NVS ('certs'): %s", esp_err_to_name(err));
+        // Handle the error accordingly
+        // abort the program
+        abort();
+    }
+
+    char * AWS_ROOT_CERT = nvs_load_value_if_exist(TAG, &handle, "aws_root_cert");
+    char * DEVICE_CERT = nvs_load_value_if_exist(TAG, &handle, "device_cert");
+    char * DEVICE_PRIVATE = nvs_load_value_if_exist(TAG, &handle, "device_priv_key");
+    char * AWS_IOT_ENDPOINT = nvs_load_value_if_exist(TAG, &handle, "aws_iot_host");
+
+    printf("AWS_ROOT_CERT: %s\n", AWS_ROOT_CERT);
+    printf("DEVICE_CERT: %s\n", DEVICE_CERT);
+    printf("DEVICE_PRIVATE: %s\n", DEVICE_PRIVATE);
+    printf("AWS_IOT_ENDPOINT: %s\n", AWS_IOT_ENDPOINT);
+
+    ESP_LOGI(TAG, "AWS_ROOT_CERT size: %d", strlen(AWS_ROOT_CERT));
+    ESP_LOGI(TAG, "DEVICE_CERT size: %d", strlen(DEVICE_CERT));
+    ESP_LOGI(TAG, "DEVICE_PRIVATE size: %d", strlen(DEVICE_PRIVATE));
+    ESP_LOGI(TAG, "AWS_IOT_ENDPOINT: %s", AWS_IOT_ENDPOINT);
+    nvs_close(handle);
+
     // last will topic and message for client disconnection
     char * last_will_topic;
     char * last_will_message;
     asprintf(&last_will_topic, "/topic/keepalive");
     asprintf(&last_will_message, "offline: " MACSTR, MAC2STR(mac));
 
-    // static const uint8_t mqtt_eclipse_org_pem_start[]  = "-----BEGIN CERTIFICATE-----\n" CONFIG_MQTT_BROKER_CERTIFICATE_OVERRIDE "\n-----END CERTIFICATE-----";
-
     ESP_LOGI(TAG, "Configuring MQTT Broker to %s", CONFIG_MQTT_BROKER_URI);
     esp_mqtt_client_config_t mqtt_cfg = {
-        .broker.address.uri = CONFIG_MQTT_BROKER_URI,
-        //.credentials.username = CONFIG_MQTT_BROKER_USERNAME,
-        //.credentials.authentication.password = CONFIG_MQTT_BROKER_PASSWORD,
-        // .broker.verification.certificate = (const char *)mqtt_eclipse_org_pem_start,
-        .session.last_will.topic = last_will_topic,
-        .session.last_will.msg = last_will_message,
-        .session.last_will.retain = 0,
-        .session.last_will.qos = 1,
-        .session.protocol_ver = MQTT_PROTOCOL_V_3_1_1,
-        .session.keepalive = 30,
-        .credentials.authentication.certificate = AWS_CERT_CRT,
-        .credentials.authentication.key = AWS_CERT_PRIVATE,
+        // BROKER CONNECTION
+        .broker.address.uri = AWS_IOT_ENDPOINT,
+        .broker.address.port = 8883,
 
+        // BROKER CERT VERIFICATION
+        .broker.verification.certificate = AWS_ROOT_CERT,
+        .broker.verification.skip_cert_common_name_check = true,
+
+        // LAST WILL TOPIC
+        // .session.last_will.topic = last_will_topic,
+        // .session.last_will.msg = last_will_message,
+        // .session.last_will.retain = 0,
+        // .session.last_will.qos = 1,
+        .session.protocol_ver = MQTT_PROTOCOL_V_3_1_1,
+        // .session.keepalive = 30,
+        .credentials.authentication.certificate = DEVICE_CERT,
+        // .credentials.authentication.certificate_len = strlen(DEVICE_CERT) + 1,
+        .credentials.authentication.key = DEVICE_PRIVATE,
+        // .credentials.authentication.key_len = strlen(DEVICE_PRIVATE) + 1,
     };
 
     s_client = esp_mqtt_client_init(&mqtt_cfg);

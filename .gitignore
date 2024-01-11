@@ -24,3 +24,4 @@ partitions.csv
 
 main/secret.h
 
+main/certificates/*

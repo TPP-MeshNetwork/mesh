@@ -1,0 +1,6 @@
+key,type,encoding,value
+certs,namespace,,
+aws_root_cert,file,string,main/certificates/AmazonRootCA1.pem
+device_cert,file,string,main/certificates/certificate.pem.crt
+device_priv_key,file,string,main/certificates/private.pem.key
+aws_iot_host,string,string,mqtts://a1t77oekn3whpu-ats.iot.us-east-1.amazonaws.com
