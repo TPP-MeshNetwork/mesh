@@ -119,7 +119,7 @@ void mqtt_app_start(uint8_t mac[6]) {
     asprintf(&last_will_topic, "/topic/keepalive");
     asprintf(&last_will_message, "offline: " MACSTR, MAC2STR(mac));
 
-    ESP_LOGI(TAG, "Configuring MQTT Broker to %s", CONFIG_MQTT_BROKER_URI);
+    // ESP_LOGI(TAG, "Configuring MQTT Broker to %s", CONFIG_MQTT_BROKER_URI);
     esp_mqtt_client_config_t mqtt_cfg = {
         // BROKER CONNECTION
         .broker.address.uri = AWS_IOT_ENDPOINT,
