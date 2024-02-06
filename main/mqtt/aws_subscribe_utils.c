@@ -1,9 +1,27 @@
+/* Standard includes. */
+#include <assert.h>
+#include <stdlib.h>
+#include <string.h>
+#include <time.h>
+
+/* POSIX includes. */
+#include <unistd.h>
+
 /* Include Demo Config as the first non-system header. */
 #include "demo_config.h"
 
 /* MQTT API headers. */
 #include "core_mqtt.h"
 #include "core_mqtt_state.h"
+
+/* OpenSSL sockets transport implementation. */
+#include "network_transport.h"
+
+/*Include backoff algorithm header for retry logic.*/
+#include "backoff_algorithm.h"
+
+/* Clock for timer. */
+#include "clock.h"
 
 
 /**
@@ -18,6 +36,38 @@
  * @brief Length of client MQTT topic.
  */
 #define MQTT_EXAMPLE_TOPIC_LENGTH           ( ( uint16_t ) ( sizeof( MQTT_EXAMPLE_TOPIC ) - 1 ) )
+
+/**
+ * @brief Maximum number of outgoing publishes maintained in the application
+ * until an ack is received from the broker.
+ */
+#define MAX_OUTGOING_PUBLISHES              ( 5U )
+
+/**
+ * @brief Packet Identifier generated when Subscribe request was sent to the broker;
+ * it is used to match received Subscribe ACK to the transmitted subscribe.
+ */
+static uint16_t globalSubscribePacketIdentifier = 0U;
+
+/**
+ * @brief Packet Identifier generated when Unsubscribe request was sent to the broker;
+ * it is used to match received Unsubscribe ACK to the transmitted unsubscribe
+ * request.
+ */
+static uint16_t globalUnsubscribePacketIdentifier = 0U;
+
+/**
+ * @brief Array to keep the outgoing publish messages.
+ * These stored outgoing publish messages are kept until a successful ack
+ * is received.
+ */
+static PublishPackets_t outgoingPublishPackets[ MAX_OUTGOING_PUBLISHES ] = { 0 };
+
+/**
+ * @brief Array to keep subscription topics.
+ * Used to re-subscribe to topics that failed initial subscription attempts.
+ */
+static MQTTSubscribeInfo_t pGlobalSubscriptionList[ 1 ];
 
 /**
  * @brief Sends an MQTT UNSUBSCRIBE to unsubscribe from
@@ -41,17 +91,6 @@ static int unsubscribeFromTopic( MQTTContext_t * pMqttContext );
  */
 static int publishToTopic( MQTTContext_t * pMqttContext, char * message);
 
-/**
- * @brief Function to get the free index at which an outgoing publish
- * can be stored.
- *
- * @param[out] pIndex The output parameter to return the index at which an
- * outgoing publish message can be stored.
- *
- * @return EXIT_FAILURE if no more publishes can be stored;
- * EXIT_SUCCESS if an index to store the next outgoing publish is obtained.
- */
-static int getNextFreeIndexForOutgoingPublishes( uint8_t * pIndex );
 
 /**
  * @brief Function to clean up an outgoing publish at given index from the
@@ -101,56 +140,14 @@ static void updateSubAckStatus( MQTTPacketInfo_t * pPacketInfo );
  */
 static int handleResubscribe( MQTTContext_t * pMqttContext );
 
-
-/*-----------------------------------------------------------*/
-
-static int getNextFreeIndexForOutgoingPublishes( uint8_t * pIndex )
-{
-    int returnStatus = EXIT_FAILURE;
-    uint8_t index = 0;
-
-    assert( outgoingPublishPackets != NULL );
-    assert( pIndex != NULL );
-
-    for( index = 0; index < MAX_OUTGOING_PUBLISHES; index++ )
-    {
-        /* A free index is marked by invalid packet id.
-         * Check if the the index has a free slot. */
-        if( outgoingPublishPackets[ index ].packetId == MQTT_PACKET_ID_INVALID )
-        {
-            returnStatus = EXIT_SUCCESS;
-            break;
-        }
-    }
-
-    /* Copy the available index into the output param. */
-    *pIndex = index;
-
-    return returnStatus;
-}
-/*-----------------------------------------------------------*/
-
-static void cleanupOutgoingPublishAt( uint8_t index )
-{
-    assert( outgoingPublishPackets != NULL );
-    assert( index < MAX_OUTGOING_PUBLISHES );
-
-    /* Clear the outgoing publish packet. */
-    ( void ) memset( &( outgoingPublishPackets[ index ] ),
-                     0x00,
-                     sizeof( outgoingPublishPackets[ index ] ) );
-}
-
-/*-----------------------------------------------------------*/
-
-static void cleanupOutgoingPublishes( void )
-{
-    assert( outgoingPublishPackets != NULL );
-
-    /* Clean up all the outgoing publish packets. */
-    ( void ) memset( outgoingPublishPackets, 0x00, sizeof( outgoingPublishPackets ) );
-}
-
+/**
+ * @brief The function to handle the incoming publishes.
+ *
+ * @param[in] pPublishInfo Pointer to publish info of the incoming publish.
+ * @param[in] packetIdentifier Packet identifier of the incoming publish.
+ */
+static void handleIncomingPublish( MQTTPublishInfo_t * pPublishInfo,
+                                   uint16_t packetIdentifier );
 /*-----------------------------------------------------------*/
 
 static void cleanupOutgoingPublishWithPacketID( uint16_t packetId )
@@ -248,38 +245,6 @@ static int handlePublishResend( MQTTContext_t * pMqttContext )
     return returnStatus;
 }
 
-/*-----------------------------------------------------------*/
-
-static void handleIncomingPublish( MQTTPublishInfo_t * pPublishInfo,
-                                   uint16_t packetIdentifier )
-{
-    assert( pPublishInfo != NULL );
-
-    /* Process incoming Publish. */
-    LogInfo( ( "Incoming QOS : %d.", pPublishInfo->qos ) );
-
-    /* Verify the received publish is for the topic we have subscribed to. */
-    if( ( pPublishInfo->topicNameLength == MQTT_EXAMPLE_TOPIC_LENGTH ) &&
-        ( 0 == strncmp( MQTT_EXAMPLE_TOPIC,
-                        pPublishInfo->pTopicName,
-                        pPublishInfo->topicNameLength ) ) )
-    {
-        LogInfo( ( "Incoming Publish Topic Name: %.*s matches subscribed topic.\n"
-                   "Incoming Publish message Packet Id is %u.\n"
-                   "Incoming Publish Message : %.*s.\n\n",
-                   pPublishInfo->topicNameLength,
-                   pPublishInfo->pTopicName,
-                   packetIdentifier,
-                   ( int ) pPublishInfo->payloadLength,
-                   ( const char * ) pPublishInfo->pPayload ) );
-    }
-    else
-    {
-        LogInfo( ( "Incoming Publish Topic Name: %.*s does not match subscribed topic.",
-                   pPublishInfo->topicNameLength,
-                   pPublishInfo->pTopicName ) );
-    }
-}
 
 /*-----------------------------------------------------------*/
 

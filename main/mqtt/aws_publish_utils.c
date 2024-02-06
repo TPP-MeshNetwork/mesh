@@ -35,6 +35,181 @@ static uint16_t globalUnsubscribePacketIdentifier = 0U;
  */
 static MQTTSubAckStatus_t globalSubAckStatus = MQTTSubAckFailure;
 
+/**
+ * @brief Sends an MQTT PUBLISH to #MQTT_EXAMPLE_TOPIC defined at
+ * the top of the file.
+ *
+ * @param[in] pMqttContext MQTT context pointer.
+ *
+ * @return EXIT_SUCCESS if PUBLISH was successfully sent;
+ * EXIT_FAILURE otherwise.
+ */
+static int publishToTopic( MQTTContext_t * pMqttContext, char * message);
+
+/**
+ * @brief Function to clean up an outgoing publish at given index from the
+ * #outgoingPublishPackets array.
+ *
+ * @param[in] index The index at which a publish message has to be cleaned up.
+ */
+static void cleanupOutgoingPublishAt( uint8_t index );
+
+/**
+ * @brief Function to get the free index at which an outgoing publish
+ * can be stored.
+ *
+ * @param[out] pIndex The output parameter to return the index at which an
+ * outgoing publish message can be stored.
+ *
+ * @return EXIT_FAILURE if no more publishes can be stored;
+ * EXIT_SUCCESS if an index to store the next outgoing publish is obtained.
+ */
+static int getNextFreeIndexForOutgoingPublishes( uint8_t * pIndex );
+
+/**
+ * @brief Wait for an expected ACK packet to be received.
+ *
+ * This function handles waiting for an expected ACK packet by calling
+ * #MQTT_ProcessLoop and waiting for #mqttCallback to set the global ACK
+ * packet identifier to the expected ACK packet identifier.
+ *
+ * @param[in] pMqttContext MQTT context pointer.
+ * @param[in] usPacketIdentifier Packet identifier for expected ACK packet.
+ * @param[in] ulTimeout Maximum duration to wait for expected ACK packet.
+ *
+ * @return true if the expected ACK packet was received, false otherwise.
+ */
+static int waitForPacketAck( MQTTContext_t * pMqttContext,
+                             uint16_t usPacketIdentifier,
+                             uint32_t ulTimeout );
+
+
+/**
+ * @brief Call #MQTT_ProcessLoop in a loop for the duration of a timeout or
+ * #MQTT_ProcessLoop returns a failure.
+ *
+ * @param[in] pMqttContext MQTT context pointer.
+ * @param[in] ulTimeoutMs Duration to call #MQTT_ProcessLoop for.
+ *
+ * @return Returns the return value of the last call to #MQTT_ProcessLoop.
+ */
+static MQTTStatus_t processLoopWithTimeout( MQTTContext_t * pMqttContext,
+                                            uint32_t ulTimeoutMs );
+
+/*-----------------------------------------------------------*/
+
+static void cleanupOutgoingPublishAt( uint8_t index )
+{
+    assert( outgoingPublishPackets != NULL );
+    assert( index < MAX_OUTGOING_PUBLISHES );
+
+    /* Clear the outgoing publish packet. */
+    ( void ) memset( &( outgoingPublishPackets[ index ] ),
+                     0x00,
+                     sizeof( outgoingPublishPackets[ index ] ) );
+}
+/*-----------------------------------------------------------*/
+
+static int getNextFreeIndexForOutgoingPublishes( uint8_t * pIndex )
+{
+    int returnStatus = EXIT_FAILURE;
+    uint8_t index = 0;
+
+    assert( outgoingPublishPackets != NULL );
+    assert( pIndex != NULL );
+
+    for( index = 0; index < MAX_OUTGOING_PUBLISHES; index++ )
+    {
+        /* A free index is marked by invalid packet id.
+         * Check if the the index has a free slot. */
+        if( outgoingPublishPackets[ index ].packetId == MQTT_PACKET_ID_INVALID )
+        {
+            returnStatus = EXIT_SUCCESS;
+            break;
+        }
+    }
+
+    /* Copy the available index into the output param. */
+    *pIndex = index;
+
+    return returnStatus;
+}
+/*-----------------------------------------------------------*/
+
+static MQTTStatus_t processLoopWithTimeout( MQTTContext_t * pMqttContext,
+                                            uint32_t ulTimeoutMs )
+{
+    uint32_t ulMqttProcessLoopTimeoutTime;
+    uint32_t ulCurrentTime;
+
+    MQTTStatus_t eMqttStatus = MQTTSuccess;
+
+    ulCurrentTime = pMqttContext->getTime();
+    ulMqttProcessLoopTimeoutTime = ulCurrentTime + ulTimeoutMs;
+
+    /* Call MQTT_ProcessLoop multiple times a timeout happens, or
+     * MQTT_ProcessLoop fails. */
+    while( ( ulCurrentTime < ulMqttProcessLoopTimeoutTime ) &&
+           ( eMqttStatus == MQTTSuccess || eMqttStatus == MQTTNeedMoreBytes ) )
+    {
+        eMqttStatus = MQTT_ProcessLoop( pMqttContext );
+        ulCurrentTime = pMqttContext->getTime();
+    }
+
+    return eMqttStatus;
+}
+
+/*-----------------------------------------------------------*/
+
+static int waitForPacketAck( MQTTContext_t * pMqttContext,
+                             uint16_t usPacketIdentifier,
+                             uint32_t ulTimeout )
+{
+    uint32_t ulMqttProcessLoopEntryTime;
+    uint32_t ulMqttProcessLoopTimeoutTime;
+    uint32_t ulCurrentTime;
+
+    MQTTStatus_t eMqttStatus = MQTTSuccess;
+    int returnStatus = EXIT_FAILURE;
+
+    /* Reset the ACK packet identifier being received. */
+    globalAckPacketIdentifier = 0U;
+
+    ulCurrentTime = pMqttContext->getTime();
+    ulMqttProcessLoopEntryTime = ulCurrentTime;
+    ulMqttProcessLoopTimeoutTime = ulCurrentTime + ulTimeout;
+
+    /* Call MQTT_ProcessLoop multiple times until the expected packet ACK
+     * is received, a timeout happens, or MQTT_ProcessLoop fails. */
+    while( ( globalAckPacketIdentifier != usPacketIdentifier ) &&
+           ( ulCurrentTime < ulMqttProcessLoopTimeoutTime ) &&
+           ( eMqttStatus == MQTTSuccess || eMqttStatus == MQTTNeedMoreBytes ) )
+    {
+        /* Event callback will set #globalAckPacketIdentifier when receiving
+         * appropriate packet. */
+        eMqttStatus = MQTT_ProcessLoop( pMqttContext );
+        ulCurrentTime = pMqttContext->getTime();
+    }
+
+    if( ( ( eMqttStatus != MQTTSuccess ) && ( eMqttStatus != MQTTNeedMoreBytes ) ) ||
+        ( globalAckPacketIdentifier != usPacketIdentifier ) )
+    {
+        LogError( ( "MQTT_ProcessLoop failed to receive ACK packet: Expected ACK Packet ID=%02"PRIx16", LoopDuration=%"PRIu32", Status=%s",
+                    usPacketIdentifier,
+                    ( ulCurrentTime - ulMqttProcessLoopEntryTime ),
+                    MQTT_Status_strerror( eMqttStatus ) ) );
+    }
+    else
+    {
+        returnStatus = EXIT_SUCCESS;
+    }
+
+    return returnStatus;
+}
+
+/*-----------------------------------------------------------*/
+
+
 static int publishToTopic( MQTTContext_t * pMqttContext, char * message )
 {
     int returnStatus = EXIT_SUCCESS;
