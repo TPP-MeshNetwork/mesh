@@ -80,9 +80,51 @@ static void eventCallback( MQTTContext_t * pMqttContext,
                            MQTTDeserializedInfo_t * pDeserializedInfo );
 
 
+/**
+ * @brief Close an MQTT session by sending MQTT DISCONNECT.
+ *
+ * @param[in] pMqttContext MQTT context pointer.
+ *
+ * @return EXIT_SUCCESS if DISCONNECT was successfully sent;
+ * EXIT_FAILURE otherwise.
+ */
+static int disconnectMqttSession( MQTTContext_t * pMqttContext );
 
-// *****************************************//
+/**
+ * @brief Initializes the MQTT library.
+ *
+ * @param[in] pMqttContext MQTT context pointer.
+ * @param[in] pNetworkContext The network context pointer.
+ *
+ * @return EXIT_SUCCESS if the MQTT library is initialized;
+ * EXIT_FAILURE otherwise.
+ */
+static int initializeMqtt( MQTTContext_t * pMqttContext,
+                           NetworkContext_t * pNetworkContext );
 
+/*-----------------------------------------------------------*/
+
+static int disconnectMqttSession( MQTTContext_t * pMqttContext )
+{
+    MQTTStatus_t mqttStatus = MQTTSuccess;
+    int returnStatus = EXIT_SUCCESS;
+
+    assert( pMqttContext != NULL );
+
+    /* Send DISCONNECT. */
+    mqttStatus = MQTT_Disconnect( pMqttContext );
+
+    if( mqttStatus != MQTTSuccess )
+    {
+        LogError( ( "Sending MQTT DISCONNECT failed with status=%s.",
+                    MQTT_Status_strerror( mqttStatus ) ) );
+        returnStatus = EXIT_FAILURE;
+    }
+
+    return returnStatus;
+}
+
+/*-----------------------------------------------------------*/
 
 static void eventCallback( MQTTContext_t * pMqttContext,
                            MQTTPacketInfo_t * pPacketInfo,
@@ -226,5 +268,80 @@ static int initializeMqtt( MQTTContext_t * pMqttContext,
         }
     }
 
+    return returnStatus;
+}
+
+
+int start_mqtt_connection(int argc, char ** argv) {
+    MQTTContext_t mqttContext = { 0 };
+    NetworkContext_t xNetworkContext = { 0 }; // TODO: Make it global??  to close conection later ??
+    bool clientSessionPresent = false, brokerSessionPresent = false;
+
+    /* Initialize MQTT library. Initialization of the MQTT library needs to be
+     * done only once in this demo. */
+    returnStatus = initializeMqtt( &mqttContext, &xNetworkContext );
+
+    if( returnStatus == EXIT_SUCCESS )
+    {
+        for( ; ; )
+        {
+            /* Attempt to connect to the MQTT broker. If connection fails, retry after
+             * a timeout. Timeout value will be exponentially increased till the maximum
+             * attempts are reached or maximum timeout value is reached. The function
+             * returns EXIT_FAILURE if the TCP connection cannot be established to
+             * broker after configured number of attempts. */
+            returnStatus = connectToServerWithBackoffRetries( &xNetworkContext, &mqttContext, &clientSessionPresent, &brokerSessionPresent );
+
+            if( returnStatus == EXIT_FAILURE )
+            {
+                /* Log error to indicate connection failure after all
+                 * reconnect attempts are over. */
+                LogError( ( "Failed to connect to MQTT broker %.*s.",
+                            AWS_IOT_ENDPOINT_LENGTH,
+                            AWS_IOT_ENDPOINT ) );
+            }
+            else
+            {
+                /* Update the flag to indicate that an MQTT client session is saved.
+                 * Once this flag is set, MQTT connect in the following iterations of
+                 * this demo will be attempted without requesting for a clean session. */
+                clientSessionPresent = true;
+
+                /* Check if session is present and if there are any outgoing publishes
+                 * that need to resend. This is only valid if the broker is
+                 * re-establishing a session which was already present. */
+                if( brokerSessionPresent == true )
+                {
+                    LogInfo( ( "An MQTT session with broker is re-established. "
+                               "Resending unacked publishes." ) );
+
+                    /* Handle all the resend of publish messages. */ // TODO: CHECK THIS
+                    //returnStatus = handlePublishResend( &mqttContext );
+                }
+                else
+                {
+                    LogInfo( ( "A clean MQTT connection is established."
+                               " Cleaning up all the stored outgoing publishes.\n\n" ) );
+
+                    /* Clean up the outgoing publishes waiting for ack as this new
+                     * connection doesn't re-establish an existing session. */
+                    cleanupOutgoingPublishes();
+                }
+
+                /* End TLS session, then close TCP connection. */
+                // cleanupESPSecureMgrCerts( &xNetworkContext ); // TODO: Dont close
+                // ( void ) xTlsDisconnect( &xNetworkContext ); // TODO: Dont close
+            }
+
+            // if( returnStatus == EXIT_SUCCESS )
+            // {
+            //     /* Log message indicating an iteration completed successfully. */
+            //     LogInfo( ( "Demo completed successfully." ) );
+            // }
+
+            LogInfo( ( "Short delay before starting the next iteration....\n" ) );
+            sleep( MQTT_SUBPUB_LOOP_DELAY_SECONDS );
+        }
+    }
     return returnStatus;
 }

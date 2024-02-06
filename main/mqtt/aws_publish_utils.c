@@ -35,6 +35,60 @@ static uint16_t globalUnsubscribePacketIdentifier = 0U;
  */
 static MQTTSubAckStatus_t globalSubAckStatus = MQTTSubAckFailure;
 
+static int publishToTopic( MQTTContext_t * pMqttContext, char * message )
+{
+    int returnStatus = EXIT_SUCCESS;
+    MQTTStatus_t mqttStatus = MQTTSuccess;
+    uint8_t publishIndex = MAX_OUTGOING_PUBLISHES;
+
+    assert( pMqttContext != NULL );
+
+    /* Get the next free index for the outgoing publish. All QoS1 outgoing
+     * publishes are stored until a PUBACK is received. These messages are
+     * stored for supporting a resend if a network connection is broken before
+     * receiving a PUBACK. */
+    returnStatus = getNextFreeIndexForOutgoingPublishes( &publishIndex );
+
+    if( returnStatus == EXIT_FAILURE )
+    {
+        LogError( ( "Unable to find a free spot for outgoing PUBLISH message.\n\n" ) );
+    }
+    else
+    {
+        /* This example publishes to only one topic and uses QOS1. */
+        outgoingPublishPackets[ publishIndex ].pubInfo.qos = MQTTQoS1;
+        outgoingPublishPackets[ publishIndex ].pubInfo.pTopicName = MQTT_EXAMPLE_TOPIC;
+        outgoingPublishPackets[ publishIndex ].pubInfo.topicNameLength = MQTT_EXAMPLE_TOPIC_LENGTH;
+        outgoingPublishPackets[ publishIndex ].pubInfo.pPayload = message;
+        outgoingPublishPackets[ publishIndex ].pubInfo.payloadLength = ( uint16_t ) (sizeof(message)*(sizeof(char *)) - 1);
+
+        /* Get a new packet id. */
+        outgoingPublishPackets[ publishIndex ].packetId = MQTT_GetPacketId( pMqttContext );
+
+        /* Send PUBLISH packet. */
+        mqttStatus = MQTT_Publish( pMqttContext,
+                                   &outgoingPublishPackets[ publishIndex ].pubInfo,
+                                   outgoingPublishPackets[ publishIndex ].packetId );
+
+        if( mqttStatus != MQTTSuccess )
+        {
+            LogError( ( "Failed to send PUBLISH packet to broker with error = %s.",
+                        MQTT_Status_strerror( mqttStatus ) ) );
+            cleanupOutgoingPublishAt( publishIndex );
+            returnStatus = EXIT_FAILURE;
+        }
+        else
+        {
+            LogInfo( ( "PUBLISH sent for topic %.*s to broker with packet ID %u.\n\n",
+                       MQTT_EXAMPLE_TOPIC_LENGTH,
+                       MQTT_EXAMPLE_TOPIC,
+                       outgoingPublishPackets[ publishIndex ].packetId ) );
+        }
+    }
+
+    return returnStatus;
+}
+
 
 static int publishLoop( MQTTContext_t * pMqttContext, char * message)
 {
@@ -92,22 +146,24 @@ static int publishLoop( MQTTContext_t * pMqttContext, char * message)
     /* Send an MQTT Disconnect packet over the already connected TCP socket.
      * There is no corresponding response for the disconnect packet. After sending
      * disconnect, client must close the network connection. */
-    LogInfo( ( "Disconnecting the MQTT connection with %.*s.",
-               AWS_IOT_ENDPOINT_LENGTH,
-               AWS_IOT_ENDPOINT ) );
-    if( returnStatus == EXIT_FAILURE )
-    {
-        /* Returned status is not used to update the local status as there
-         * were failures in demo execution. */
-        ( void ) disconnectMqttSession( pMqttContext );
-    }
-    else
-    {
-        returnStatus = disconnectMqttSession( pMqttContext );
-    }
+    // LogInfo( ( "Disconnecting the MQTT connection with %.*s.",
+    //            AWS_IOT_ENDPOINT_LENGTH,
+    //            AWS_IOT_ENDPOINT ) );
+    // if( returnStatus == EXIT_FAILURE )
+    // {
+    //     /* Returned status is not used to update the local status as there
+    //      * were failures in demo execution. */
+    //     ( void ) disconnectMqttSession( pMqttContext );
+    // }
+    // else
+    // {
+    //     returnStatus = disconnectMqttSession( pMqttContext );
+    // }
 
     /* Reset global SUBACK status variable after completion of subscription request cycle. */
     globalSubAckStatus = MQTTSubAckFailure;
 
     return returnStatus;
 }
+
+
