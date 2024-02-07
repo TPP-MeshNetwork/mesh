@@ -5,35 +5,14 @@
 /* POSIX includes. */
 #include <unistd.h>
 
+
 /* MQTT API headers. */
 #include "core_mqtt.h"
 #include "core_mqtt_state.h"
 
+#include "mqtt/aws_variables.h"
 
-/**
- * @brief Delay between MQTT publishes in seconds.
- */
-#define DELAY_BETWEEN_PUBLISHES_SECONDS     ( 1U )
-/**
- * @brief Timeout for MQTT_ProcessLoop function in milliseconds.
- */
-#define MQTT_PROCESS_LOOP_TIMEOUT_MS        ( 5000U )
-/**
- * @brief Number of PUBLISH messages sent per iteration.
- */
-#define MQTT_PUBLISH_COUNT_PER_LOOP         ( 5U )
-/**
- * @brief Packet Identifier generated when Unsubscribe request was sent to the broker;
- * it is used to match received Unsubscribe ACK to the transmitted unsubscribe
- * request.
- */
-static uint16_t globalUnsubscribePacketIdentifier = 0U;
-/**
- * @brief Status of latest Subscribe ACK;
- * it is updated every time the callback function processes a Subscribe ACK
- * and accounts for subscription to a single topic.
- */
-static MQTTSubAckStatus_t globalSubAckStatus = MQTTSubAckFailure;
+
 
 /**
  * @brief Sends an MQTT PUBLISH to #MQTT_EXAMPLE_TOPIC defined at

@@ -7,13 +7,6 @@
 /* POSIX includes. */
 #include <unistd.h>
 
-/* Include Demo Config as the first non-system header. */
-#include "demo_config.h"
-
-/* MQTT API headers. */
-#include "core_mqtt.h"
-#include "core_mqtt_state.h"
-
 /* OpenSSL sockets transport implementation. */
 #include "network_transport.h"
 
@@ -23,51 +16,8 @@
 /* Clock for timer. */
 #include "clock.h"
 
+#include "mqtt/aws_variables.h"
 
-/**
- * @brief The topic to subscribe and publish to in the example.
- *
- * The topic name starts with the client identifier to ensure that each demo
- * interacts with a unique topic name.
- */
-#define MQTT_EXAMPLE_TOPIC                  CLIENT_IDENTIFIER "/example/topic"
-
-/**
- * @brief Length of client MQTT topic.
- */
-#define MQTT_EXAMPLE_TOPIC_LENGTH           ( ( uint16_t ) ( sizeof( MQTT_EXAMPLE_TOPIC ) - 1 ) )
-
-/**
- * @brief Maximum number of outgoing publishes maintained in the application
- * until an ack is received from the broker.
- */
-#define MAX_OUTGOING_PUBLISHES              ( 5U )
-
-/**
- * @brief Packet Identifier generated when Subscribe request was sent to the broker;
- * it is used to match received Subscribe ACK to the transmitted subscribe.
- */
-static uint16_t globalSubscribePacketIdentifier = 0U;
-
-/**
- * @brief Packet Identifier generated when Unsubscribe request was sent to the broker;
- * it is used to match received Unsubscribe ACK to the transmitted unsubscribe
- * request.
- */
-static uint16_t globalUnsubscribePacketIdentifier = 0U;
-
-/**
- * @brief Array to keep the outgoing publish messages.
- * These stored outgoing publish messages are kept until a successful ack
- * is received.
- */
-static PublishPackets_t outgoingPublishPackets[ MAX_OUTGOING_PUBLISHES ] = { 0 };
-
-/**
- * @brief Array to keep subscription topics.
- * Used to re-subscribe to topics that failed initial subscription attempts.
- */
-static MQTTSubscribeInfo_t pGlobalSubscriptionList[ 1 ];
 
 /**
  * @brief Sends an MQTT UNSUBSCRIBE to unsubscribe from
@@ -148,6 +98,51 @@ static int handleResubscribe( MQTTContext_t * pMqttContext );
  */
 static void handleIncomingPublish( MQTTPublishInfo_t * pPublishInfo,
                                    uint16_t packetIdentifier );
+
+/**
+ * @brief Wait for an expected ACK packet to be received.
+ *
+ * This function handles waiting for an expected ACK packet by calling
+ * #MQTT_ProcessLoop and waiting for #mqttCallback to set the global ACK
+ * packet identifier to the expected ACK packet identifier.
+ *
+ * @param[in] pMqttContext MQTT context pointer.
+ * @param[in] usPacketIdentifier Packet identifier for expected ACK packet.
+ * @param[in] ulTimeout Maximum duration to wait for expected ACK packet.
+ *
+ * @return true if the expected ACK packet was received, false otherwise.
+ */
+static int waitForPacketAck( MQTTContext_t * pMqttContext,
+                             uint16_t usPacketIdentifier,
+                             uint32_t ulTimeout );
+/**
+ * @brief Function to clean up an outgoing publish at given index from the
+ * #outgoingPublishPackets array.
+ *
+ * @param[in] index The index at which a publish message has to be cleaned up.
+ */
+static void cleanupOutgoingPublishAt( uint8_t index );
+                             
+
+static uint32_t generateRandomNumber()
+{
+    return( rand() );
+}
+
+/*-----------------------------------------------------------*/
+
+
+static void cleanupOutgoingPublishAt( uint8_t index )
+{
+    assert( outgoingPublishPackets != NULL );
+    assert( index < MAX_OUTGOING_PUBLISHES );
+
+    /* Clear the outgoing publish packet. */
+    ( void ) memset( &( outgoingPublishPackets[ index ] ),
+                     0x00,
+                     sizeof( outgoingPublishPackets[ index ] ) );
+}
+
 /*-----------------------------------------------------------*/
 
 static void cleanupOutgoingPublishWithPacketID( uint16_t packetId )
@@ -264,6 +259,54 @@ static void updateSubAckStatus( MQTTPacketInfo_t * pPacketInfo )
 
     /* Demo only subscribes to one topic, so only one status code is returned. */
     globalSubAckStatus = ( MQTTSubAckStatus_t ) pPayload[ 0 ];
+}
+
+/*-----------------------------------------------------------*/
+
+static int waitForPacketAck( MQTTContext_t * pMqttContext,
+                             uint16_t usPacketIdentifier,
+                             uint32_t ulTimeout )
+{
+    uint32_t ulMqttProcessLoopEntryTime;
+    uint32_t ulMqttProcessLoopTimeoutTime;
+    uint32_t ulCurrentTime;
+
+    MQTTStatus_t eMqttStatus = MQTTSuccess;
+    int returnStatus = EXIT_FAILURE;
+
+    /* Reset the ACK packet identifier being received. */
+    globalAckPacketIdentifier = 0U;
+
+    ulCurrentTime = pMqttContext->getTime();
+    ulMqttProcessLoopEntryTime = ulCurrentTime;
+    ulMqttProcessLoopTimeoutTime = ulCurrentTime + ulTimeout;
+
+    /* Call MQTT_ProcessLoop multiple times until the expected packet ACK
+     * is received, a timeout happens, or MQTT_ProcessLoop fails. */
+    while( ( globalAckPacketIdentifier != usPacketIdentifier ) &&
+           ( ulCurrentTime < ulMqttProcessLoopTimeoutTime ) &&
+           ( eMqttStatus == MQTTSuccess || eMqttStatus == MQTTNeedMoreBytes ) )
+    {
+        /* Event callback will set #globalAckPacketIdentifier when receiving
+         * appropriate packet. */
+        eMqttStatus = MQTT_ProcessLoop( pMqttContext );
+        ulCurrentTime = pMqttContext->getTime();
+    }
+
+    if( ( ( eMqttStatus != MQTTSuccess ) && ( eMqttStatus != MQTTNeedMoreBytes ) ) ||
+        ( globalAckPacketIdentifier != usPacketIdentifier ) )
+    {
+        LogError( ( "MQTT_ProcessLoop failed to receive ACK packet: Expected ACK Packet ID=%02"PRIx16", LoopDuration=%"PRIu32", Status=%s",
+                    usPacketIdentifier,
+                    ( ulCurrentTime - ulMqttProcessLoopEntryTime ),
+                    MQTT_Status_strerror( eMqttStatus ) ) );
+    }
+    else
+    {
+        returnStatus = EXIT_SUCCESS;
+    }
+
+    return returnStatus;
 }
 
 /*-----------------------------------------------------------*/

@@ -7,12 +7,10 @@
 /* POSIX includes. */
 #include <unistd.h>
 
-/* Include Demo Config as the first non-system header. */
-#include "demo_config.h"
-
 /* MQTT API headers. */
 #include "core_mqtt.h"
 #include "core_mqtt_state.h"
+
 
 /* OpenSSL sockets transport implementation. */
 #include "network_transport.h"
@@ -23,122 +21,9 @@
 /* Clock for timer. */
 #include "clock.h"
 
-#ifdef CONFIG_EXAMPLE_USE_ESP_SECURE_CERT_MGR
-    #include "esp_secure_cert_read.h"    
-#endif
-
-#ifdef CONFIG_EXAMPLE_USE_ESP_SECURE_CERT_MGR
-    #include "esp_secure_cert_read.h"    
-#endif
-
-#ifndef CLIENT_IDENTIFIER
-    #error "Please define a unique client identifier, CLIENT_IDENTIFIER, in menuconfig"
-#endif
+#include "mqtt/aws_variables.h"
 
 
-/**
- * @brief The length of the MQTT metrics string expected by AWS IoT.
- */
-#define METRICS_STRING_LENGTH               ( ( uint16_t ) ( sizeof( METRICS_STRING ) - 1 ) )
-
-/**
- * @brief The length of the outgoing publish records array used by the coreMQTT
- * library to track QoS > 0 packet ACKS for outgoing publishes.
- */
-#define OUTGOING_PUBLISH_RECORD_LEN    ( 10U )
-
-/**
- * @brief The length of the incoming publish records array used by the coreMQTT
- * library to track QoS > 0 packet ACKS for incoming publishes.
- */
-#define INCOMING_PUBLISH_RECORD_LEN    ( 10U )
-
-/**
- * @brief Size of the network buffer for MQTT packets.
- */
-#define NETWORK_BUFFER_SIZE       ( CONFIG_MQTT_NETWORK_BUFFER_SIZE )
-
-/**
- * @brief The network buffer must remain valid for the lifetime of the MQTT context.
- */
-static uint8_t buffer[ NETWORK_BUFFER_SIZE ];
-
-/**
- * @brief Delay in seconds between two iterations of subscribePublishLoop().
- */
-#define MQTT_SUBPUB_LOOP_DELAY_SECONDS      ( 5U )
-
-/**
- * @brief Length of MQTT server host name.
- */
-#define AWS_IOT_ENDPOINT_LENGTH         ( ( uint16_t ) ( sizeof( AWS_IOT_ENDPOINT ) - 1 ) )
-
-/**
- * @brief The maximum number of retries for connecting to server.
- */
-#define CONNECTION_RETRY_MAX_ATTEMPTS            ( 5U )
-
-/**
- * @brief The maximum back-off delay (in milliseconds) for retrying connection to server.
- */
-#define CONNECTION_RETRY_MAX_BACKOFF_DELAY_MS    ( 5000U )
-
-/**
- * @brief The base back-off delay (in milliseconds) to use for connection retry attempts.
- */
-#define CONNECTION_RETRY_BACKOFF_BASE_MS         ( 500U )
-
-/**
- * @brief Timeout for receiving CONNACK packet in milli seconds.
- */
-#define CONNACK_RECV_TIMEOUT_MS                  ( 1000U )
-
-/**
- * @brief Length of client MQTT topic.
- */
-#define MQTT_EXAMPLE_TOPIC_LENGTH           ( ( uint16_t ) ( sizeof( MQTT_EXAMPLE_TOPIC ) - 1 ) )
-
-/**
- * @brief The topic to subscribe and publish to in the example.
- *
- * The topic name starts with the client identifier to ensure that each demo
- * interacts with a unique topic name.
- */
-#define MQTT_EXAMPLE_TOPIC                  CLIENT_IDENTIFIER "/example/topic"
-
-/**
- * @brief Sends an MQTT CONNECT packet over the already connected TCP socket.
- *
- * @param[in] pMqttContext MQTT context pointer.
- * @param[in] createCleanSession Creates a new MQTT session if true.
- * If false, tries to establish the existing session if there was session
- * already present in broker.
- * @param[out] pSessionPresent Session was already present in the broker or not.
- * Session present response is obtained from the CONNACK from broker.
- *
- * @return EXIT_SUCCESS if an MQTT session is established;
- * EXIT_FAILURE otherwise.
- */
-static int establishMqttSession( MQTTContext_t * pMqttContext,
-                                 bool createCleanSession,
-                                 bool * pSessionPresent );
-/**
- * @brief Array to track the outgoing publish records for outgoing publishes
- * with QoS > 0.
- *
- * This is passed into #MQTT_InitStatefulQoS to allow for QoS > 0.
- *
- */
-static MQTTPubAckInfo_t pOutgoingPublishRecords[ OUTGOING_PUBLISH_RECORD_LEN ];
-
-/**
- * @brief Array to track the incoming publish records for incoming publishes
- * with QoS > 0.
- *
- * This is passed into #MQTT_InitStatefulQoS to allow for QoS > 0.
- *
- */
-static MQTTPubAckInfo_t pIncomingPublishRecords[ INCOMING_PUBLISH_RECORD_LEN ];
 
 /**
  * @brief The application callback function for getting the incoming publish
@@ -211,6 +96,45 @@ static void cleanupOutgoingPublishes( void );
  */
 static void updateSubAckStatus( MQTTPacketInfo_t * pPacketInfo );
 
+/**
+ * @brief Sends an MQTT CONNECT packet over the already connected TCP socket.
+ *
+ * @param[in] pMqttContext MQTT context pointer.
+ * @param[in] createCleanSession Creates a new MQTT session if true.
+ * If false, tries to establish the existing session if there was session
+ * already present in broker.
+ * @param[out] pSessionPresent Session was already present in the broker or not.
+ * Session present response is obtained from the CONNACK from broker.
+ *
+ * @return EXIT_SUCCESS if an MQTT session is established;
+ * EXIT_FAILURE otherwise.
+ */
+static int establishMqttSession( MQTTContext_t * pMqttContext,
+                                 bool createCleanSession,
+                                 bool * pSessionPresent );
+
+/**
+ * @brief Function to clean up the publish packet with the given packet id.
+ *
+ * @param[in] packetId Packet identifier of the packet to be cleaned up from
+ * the array.
+ */
+static void cleanupOutgoingPublishWithPacketID( uint16_t packetId );
+
+/**
+ * @brief Function to clean up an outgoing publish at given index from the
+ * #outgoingPublishPackets array.
+ *
+ * @param[in] index The index at which a publish message has to be cleaned up.
+ */
+static void cleanupOutgoingPublishAt( uint8_t index );
+
+/*-----------------------------------------------------------*/
+
+static uint32_t generateRandomNumber()
+{
+    return( rand() );
+}
 /*-----------------------------------------------------------*/
 
 static int establishMqttSession( MQTTContext_t * pMqttContext,
@@ -350,6 +274,61 @@ static void handleIncomingPublish( MQTTPublishInfo_t * pPublishInfo,
 
 /*-----------------------------------------------------------*/
 
+static void cleanupOutgoingPublishAt( uint8_t index )
+{
+    assert( outgoingPublishPackets != NULL );
+    assert( index < MAX_OUTGOING_PUBLISHES );
+
+    /* Clear the outgoing publish packet. */
+    ( void ) memset( &( outgoingPublishPackets[ index ] ),
+                     0x00,
+                     sizeof( outgoingPublishPackets[ index ] ) );
+}
+/*-----------------------------------------------------------*/
+
+static void cleanupOutgoingPublishWithPacketID( uint16_t packetId )
+{
+    uint8_t index = 0;
+
+    assert( outgoingPublishPackets != NULL );
+    assert( packetId != MQTT_PACKET_ID_INVALID );
+
+    /* Clean up all the saved outgoing publishes. */
+    for( ; index < MAX_OUTGOING_PUBLISHES; index++ )
+    {
+        if( outgoingPublishPackets[ index ].packetId == packetId )
+        {
+            cleanupOutgoingPublishAt( index );
+            LogInfo( ( "Cleaned up outgoing publish packet with packet id %u.\n\n",
+                       packetId ) );
+            break;
+        }
+    }
+}
+
+/*-----------------------------------------------------------*/
+
+static void updateSubAckStatus( MQTTPacketInfo_t * pPacketInfo )
+{
+    uint8_t * pPayload = NULL;
+    size_t pSize = 0;
+
+    MQTTStatus_t mqttStatus = MQTT_GetSubAckStatusCodes( pPacketInfo, &pPayload, &pSize );
+
+    /* MQTT_GetSubAckStatusCodes always returns success if called with packet info
+     * from the event callback and non-NULL parameters. */
+    assert( mqttStatus == MQTTSuccess );
+
+    /* Suppress unused variable warning when asserts are disabled in build. */
+    ( void ) mqttStatus;
+
+    /* Demo only subscribes to one topic, so only one status code is returned. */
+    globalSubAckStatus = ( MQTTSubAckStatus_t ) pPayload[ 0 ];
+}
+
+
+/*-----------------------------------------------------------*/
+
 static void eventCallback( MQTTContext_t * pMqttContext,
                            MQTTPacketInfo_t * pPacketInfo,
                            MQTTDeserializedInfo_t * pDeserializedInfo )
@@ -442,25 +421,24 @@ static void eventCallback( MQTTContext_t * pMqttContext,
     }
 }
 
-/*-----------------------------------------------------------*/
-
-static void updateSubAckStatus( MQTTPacketInfo_t * pPacketInfo )
+static void cleanupESPSecureMgrCerts( NetworkContext_t * pNetworkContext )
 {
-    uint8_t * pPayload = NULL;
-    size_t pSize = 0;
+#ifdef CONFIG_EXAMPLE_USE_SECURE_ELEMENT
+    /* Nothing to be freed */
+#elif defined(CONFIG_EXAMPLE_USE_ESP_SECURE_CERT_MGR)
+    esp_secure_cert_free_device_cert(&pNetworkContext->pcClientCert);
+#ifdef CONFIG_ESP_SECURE_CERT_DS_PERIPHERAL
+    esp_secure_cert_free_ds_ctx(pNetworkContext->ds_data);
+#else /* !CONFIG_ESP_SECURE_CERT_DS_PERIPHERAL */
+    esp_secure_cert_free_priv_key(&pNetworkContext->pcClientKey);
+#endif /* CONFIG_ESP_SECURE_CERT_DS_PERIPHERAL */
 
-    MQTTStatus_t mqttStatus = MQTT_GetSubAckStatusCodes( pPacketInfo, &pPayload, &pSize );
-
-    /* MQTT_GetSubAckStatusCodes always returns success if called with packet info
-     * from the event callback and non-NULL parameters. */
-    assert( mqttStatus == MQTTSuccess );
-
-    /* Suppress unused variable warning when asserts are disabled in build. */
-    ( void ) mqttStatus;
-
-    /* Demo only subscribes to one topic, so only one status code is returned. */
-    globalSubAckStatus = ( MQTTSubAckStatus_t ) pPayload[ 0 ];
+#else /* !CONFIG_EXAMPLE_USE_SECURE_ELEMENT && !CONFIG_EXAMPLE_USE_ESP_SECURE_CERT_MGR  */
+    /* Nothing to be freed */
+#endif
+    return;
 }
+
 
 /*-----------------------------------------------------------*/
 
@@ -678,6 +656,7 @@ static int initializeMqtt( MQTTContext_t * pMqttContext,
 
 
 int start_mqtt_connection(int argc, char ** argv) {
+    int returnStatus = EXIT_SUCCESS;
     MQTTContext_t mqttContext = { 0 };
     NetworkContext_t xNetworkContext = { 0 }; // TODO: Make it global??  to close conection later ??
     bool clientSessionPresent = false, brokerSessionPresent = false;
