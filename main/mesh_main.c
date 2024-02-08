@@ -18,6 +18,9 @@
 #include "driver/gpio.h"
 #include "freertos/semphr.h"
 #include <components/dht.h>
+#include "mqtt/aws_utils.h"
+//#include "mqtt/aws_utils.h"
+
 
 
 /*******************************************************
@@ -62,6 +65,8 @@ void mqtt_app_publish(const char *topic, const char *publish_prefix, char *publi
  *                Function Definitions
  *******************************************************/
 int aws_iot_demo_main( int argc, char ** argv );
+MQTTContext_t start_mqtt_connection( int argc, char ** argv );
+
 
 
 void static recv_cb(mesh_addr_t *from, mesh_data_t *data)
@@ -241,9 +246,13 @@ void esp_mesh_task_mqtt_keepalive(void *arg)
     vTaskDelete(NULL);
 }
 
+
 void esp_mesh_mqtt_task_aws(void *arg)
 {
-    aws_iot_demo_main(0, NULL);
+    //aws_iot_demo_main(0, NULL);
+    MQTTContext_t mqttContext = {0};
+    mqttContext = start_mqtt_connection(0, NULL);
+    //publishLoop( &mqttContext, "Init connection MQTT");
     vTaskDelete(NULL);
 }
 

@@ -22,8 +22,7 @@
 #include "clock.h"
 
 #include "mqtt/aws_variables.h"
-
-
+#include "mqtt/aws_utils.h"
 
 
 /*-----------------------------------------------------------*/
@@ -552,7 +551,7 @@ static int initializeMqtt( MQTTContext_t * pMqttContext,
 }
 
 
-int start_mqtt_connection(int argc, char ** argv) {
+MQTTContext_t start_mqtt_connection(int argc, char ** argv) {
     int returnStatus = EXIT_SUCCESS;
     MQTTContext_t mqttContext = { 0 };
     NetworkContext_t xNetworkContext = { 0 }; // TODO: Make it global??  to close conection later ??
@@ -609,6 +608,10 @@ int start_mqtt_connection(int argc, char ** argv) {
                     cleanupOutgoingPublishes();
                 }
 
+                /* If TLS session is established, execute Subscribe/Publish loop. */
+                // returnStatus = subscribePublishLoop( &mqttContext );
+                //returnStatus = publishLoop( &mqttContext, "milos test 1");
+
                 /* End TLS session, then close TCP connection. */
                 // cleanupESPSecureMgrCerts( &xNetworkContext ); // TODO: Dont close
                 // ( void ) xTlsDisconnect( &xNetworkContext ); // TODO: Dont close
@@ -624,5 +627,5 @@ int start_mqtt_connection(int argc, char ** argv) {
             sleep( MQTT_SUBPUB_LOOP_DELAY_SECONDS );
         }
     }
-    return returnStatus;
+    return mqttContext;
 }

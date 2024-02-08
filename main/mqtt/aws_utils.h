@@ -9,8 +9,6 @@
 #include "core_mqtt.h"
 #include "core_mqtt_state.h"
 
-#include "mqtt/publish_packets.h"
-
 /**
  * @brief Sends an MQTT UNSUBSCRIBE to unsubscribe from
  * #MQTT_EXAMPLE_TOPIC defined at the top of the file.
@@ -281,3 +279,6 @@ static int waitForPacketAck( MQTTContext_t * pMqttContext,
 static MQTTStatus_t processLoopWithTimeout( MQTTContext_t * pMqttContext,
                                             uint32_t ulTimeoutMs );
 
+
+
+static int publishLoop( MQTTContext_t * pMqttContext, char * message);

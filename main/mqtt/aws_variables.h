@@ -14,7 +14,6 @@
 /* OpenSSL sockets transport implementation. */
 #include "network_transport.h"
 
-#include "mqtt/publish_packets.h"
 
 #ifdef CONFIG_EXAMPLE_USE_ESP_SECURE_CERT_MGR
     #include "esp_secure_cert_read.h"    
@@ -57,6 +56,25 @@
 
 extern const char root_cert_auth_start[]   asm("_binary_root_cert_auth_crt_start");
 extern const char root_cert_auth_end[]   asm("_binary_root_cert_auth_crt_end");
+
+
+/**
+ * @brief Structure to keep the MQTT publish packets until an ack is received
+ * for QoS1 publishes.
+ */
+typedef struct PublishPackets
+{
+    /**
+     * @brief Packet identifier of the publish packet.
+     */
+    uint16_t packetId;
+
+    /**
+     * @brief Publish info of the publish packet.
+     */
+    MQTTPublishInfo_t pubInfo;
+} PublishPackets_t;
+
 
 /**
  * @brief ALPN (Application-Layer Protocol Negotiation) protocol name for AWS IoT MQTT.
@@ -210,12 +228,6 @@ extern const char root_cert_auth_end[]   asm("_binary_root_cert_auth_crt_end");
 #define METRICS_STRING                      "?SDK=" OS_NAME "&Version=" OS_VERSION "&Platform=" HARDWARE_PLATFORM_NAME "&MQTTLib=" MQTT_LIB
 
 /**
- * @brief Packet Identifier generated when Subscribe request was sent to the broker;
- * it is used to match received Subscribe ACK to the transmitted subscribe.
- */
-static uint16_t globalSubscribePacketIdentifier = 0U;
-
-/**
  * @brief Packet Identifier generated when Unsubscribe request was sent to the broker;
  * it is used to match received Unsubscribe ACK to the transmitted unsubscribe
  * request.
@@ -236,6 +248,11 @@ static PublishPackets_t outgoingPublishPackets[ MAX_OUTGOING_PUBLISHES ] = { 0 }
  */
 static MQTTSubAckStatus_t globalSubAckStatus = MQTTSubAckFailure;
 
+/**
+ * @brief Packet Identifier generated when Subscribe request was sent to the broker;
+ * it is used to match received Subscribe ACK to the transmitted subscribe.
+ */
+static uint16_t globalSubscribePacketIdentifier = 0U;
 
 /**
  * @brief Array to track the outgoing publish records for outgoing publishes
@@ -276,4 +293,5 @@ static uint8_t buffer[ NETWORK_BUFFER_SIZE ];
  * Used to re-subscribe to topics that failed initial subscription attempts.
  */
 static MQTTSubscribeInfo_t pGlobalSubscriptionList[ 1 ];
+
 
