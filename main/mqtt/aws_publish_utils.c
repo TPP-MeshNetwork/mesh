@@ -11,11 +11,10 @@
 
 #include "mqtt/aws_variables.h"
 #include "mqtt/aws_publish_utils.h"
-#include "aws_utils.h"
 
 /*-----------------------------------------------------------*/
 
-static void cleanupOutgoingPublishAt( uint8_t index )
+void cleanupOutgoingPublishAt( uint8_t index )
 {
     assert( outgoingPublishPackets != NULL );
     assert( index < MAX_OUTGOING_PUBLISHES );
@@ -27,7 +26,7 @@ static void cleanupOutgoingPublishAt( uint8_t index )
 }
 /*-----------------------------------------------------------*/
 
-static int getNextFreeIndexForOutgoingPublishes( uint8_t * pIndex )
+int getNextFreeIndexForOutgoingPublishes( uint8_t * pIndex )
 {
     int returnStatus = EXIT_FAILURE;
     uint8_t index = 0;
@@ -54,7 +53,7 @@ static int getNextFreeIndexForOutgoingPublishes( uint8_t * pIndex )
 
 /*-----------------------------------------------------------*/
 
-static MQTTStatus_t processLoopWithTimeout( MQTTContext_t * pMqttContext,
+MQTTStatus_t processLoopWithTimeout( MQTTContext_t * pMqttContext,
                                             uint32_t ulTimeoutMs )
 {
     uint32_t ulMqttProcessLoopTimeoutTime;
@@ -79,7 +78,7 @@ static MQTTStatus_t processLoopWithTimeout( MQTTContext_t * pMqttContext,
 
 /*-----------------------------------------------------------*/
 
-static int waitForPacketAck( MQTTContext_t * pMqttContext,
+int waitForPacketAck( MQTTContext_t * pMqttContext,
                              uint16_t usPacketIdentifier,
                              uint32_t ulTimeout )
 {
@@ -128,7 +127,7 @@ static int waitForPacketAck( MQTTContext_t * pMqttContext,
 /*-----------------------------------------------------------*/
 
 
-static int publishToTopic( MQTTContext_t * pMqttContext, char * message )
+int publishToTopic( MQTTContext_t * pMqttContext, char * message )
 {
     int returnStatus = EXIT_SUCCESS;
     MQTTStatus_t mqttStatus = MQTTSuccess;
@@ -183,7 +182,7 @@ static int publishToTopic( MQTTContext_t * pMqttContext, char * message )
 }
 
 
-static int publishLoop( MQTTContext_t * pMqttContext, char * message)
+int publishLoop( MQTTContext_t * pMqttContext, char * message)
 {
     int returnStatus = EXIT_SUCCESS;
     MQTTStatus_t mqttStatus = MQTTSuccess;

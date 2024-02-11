@@ -19,7 +19,7 @@
 #include "freertos/semphr.h"
 #include <components/dht.h>
 #include "mqtt/aws_utils.h"
-//#include "mqtt/aws_utils.h"
+#include "mqtt/aws_publish_utils.h"
 
 
 
@@ -252,7 +252,9 @@ void esp_mesh_mqtt_task_aws(void *arg)
     //aws_iot_demo_main(0, NULL);
     MQTTContext_t mqttContext = {0};
     mqttContext = start_mqtt_connection(0, NULL);
-    //publishLoop( &mqttContext, "Init connection MQTT");
+    ESP_LOGI(MESH_TAG, "esp_mesh_mqtt_task_aws");
+
+    publishLoop( &mqttContext, "Init connection MQTT");
     vTaskDelete(NULL);
 }
 

@@ -11,7 +11,7 @@
  * @param[in] pPacketInfo Packet Info pointer for the incoming packet.
  * @param[in] pDeserializedInfo Deserialized information from the incoming packet.
  */
-static void eventCallback( MQTTContext_t * pMqttContext,
+void eventCallback( MQTTContext_t * pMqttContext,
                            MQTTPacketInfo_t * pPacketInfo,
                            MQTTDeserializedInfo_t * pDeserializedInfo );
 
@@ -24,7 +24,7 @@ static void eventCallback( MQTTContext_t * pMqttContext,
  * @return EXIT_SUCCESS if DISCONNECT was successfully sent;
  * EXIT_FAILURE otherwise.
  */
-static int disconnectMqttSession( MQTTContext_t * pMqttContext );
+int disconnectMqttSession( MQTTContext_t * pMqttContext );
 
 /**
  * @brief Initializes the MQTT library.
@@ -35,7 +35,7 @@ static int disconnectMqttSession( MQTTContext_t * pMqttContext );
  * @return EXIT_SUCCESS if the MQTT library is initialized;
  * EXIT_FAILURE otherwise.
  */
-static int initializeMqtt( MQTTContext_t * pMqttContext,
+int initializeMqtt( MQTTContext_t * pMqttContext,
                            NetworkContext_t * pNetworkContext );
 
 /**
@@ -54,7 +54,7 @@ static int initializeMqtt( MQTTContext_t * pMqttContext,
  *
  * @return EXIT_FAILURE on failure; EXIT_SUCCESS on successful connection.
  */
-static int connectToServerWithBackoffRetries( NetworkContext_t * pNetworkContext,
+int connectToServerWithBackoffRetries( NetworkContext_t * pNetworkContext,
                                               MQTTContext_t * pMqttContext,
                                               bool * pClientSessionPresent,
                                               bool * pBrokerSessionPresent );
@@ -63,7 +63,7 @@ static int connectToServerWithBackoffRetries( NetworkContext_t * pNetworkContext
  * @brief Function to clean up all the outgoing publishes maintained in the
  * array.
  */
-static void cleanupOutgoingPublishes( void );
+void cleanupOutgoingPublishes( void );
 
 /**
  * @brief Function to update variable globalSubAckStatus with status
@@ -72,7 +72,7 @@ static void cleanupOutgoingPublishes( void );
  *
  * @param[in] Server response to the subscription request.
  */
-static void updateSubAckStatus( MQTTPacketInfo_t * pPacketInfo );
+void updateSubAckStatus( MQTTPacketInfo_t * pPacketInfo );
 
 /**
  * @brief Sends an MQTT CONNECT packet over the already connected TCP socket.
@@ -87,7 +87,7 @@ static void updateSubAckStatus( MQTTPacketInfo_t * pPacketInfo );
  * @return EXIT_SUCCESS if an MQTT session is established;
  * EXIT_FAILURE otherwise.
  */
-static int establishMqttSession( MQTTContext_t * pMqttContext,
+int establishMqttSession( MQTTContext_t * pMqttContext,
                                  bool createCleanSession,
                                  bool * pSessionPresent );
 
@@ -97,12 +97,4 @@ static int establishMqttSession( MQTTContext_t * pMqttContext,
  * @param[in] packetId Packet identifier of the packet to be cleaned up from
  * the array.
  */
-static void cleanupOutgoingPublishWithPacketID( uint16_t packetId );
-
-/**
- * @brief Function to clean up an outgoing publish at given index from the
- * #outgoingPublishPackets array.
- *
- * @param[in] index The index at which a publish message has to be cleaned up.
- */
-static void cleanupOutgoingPublishAt( uint8_t index );
+void cleanupOutgoingPublishWithPacketID( uint16_t packetId );
