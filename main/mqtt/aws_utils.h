@@ -278,7 +278,3 @@ static int waitForPacketAck( MQTTContext_t * pMqttContext,
  */
 static MQTTStatus_t processLoopWithTimeout( MQTTContext_t * pMqttContext,
                                             uint32_t ulTimeoutMs );
-
-
-
-static int publishLoop( MQTTContext_t * pMqttContext, char * message);

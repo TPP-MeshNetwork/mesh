@@ -14,6 +14,7 @@ set(EXTRA_COMPONENT_DIRS ${espidflib_SOURCE_DIR}/components
 						 "${CMAKE_CURRENT_LIST_DIR}/libraries/common/posix_compat"
              "$ENV{IDF_PATH}/examples/common_components/protocol_examples_common"
 						 "${CMAKE_CURRENT_LIST_DIR}/libraries/common/logging"
+						 "${CMAKE_CURRENT_LIST_DIR}/main/mqtt"
   )
 
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)

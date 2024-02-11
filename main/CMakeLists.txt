@@ -6,4 +6,7 @@ idf_component_register(SRCS "mesh_main.c"
                             "mqtt/aws_initialize_utils.c"
                             "mqtt/aws_subscribe_utils.c"
                             "mqtt/aws_publish_utils.c"
-                    INCLUDE_DIRS "." "include")
+                    INCLUDE_DIRS "." 
+                                 "include"
+                                 "mqtt"
+                        )

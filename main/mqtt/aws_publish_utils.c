@@ -5,13 +5,13 @@
 /* POSIX includes. */
 #include <unistd.h>
 
-
 /* MQTT API headers. */
 #include "core_mqtt.h"
 #include "core_mqtt_state.h"
 
 #include "mqtt/aws_variables.h"
-
+#include "mqtt/aws_publish_utils.h"
+#include "aws_utils.h"
 
 /*-----------------------------------------------------------*/
 
@@ -51,6 +51,7 @@ static int getNextFreeIndexForOutgoingPublishes( uint8_t * pIndex )
 
     return returnStatus;
 }
+
 /*-----------------------------------------------------------*/
 
 static MQTTStatus_t processLoopWithTimeout( MQTTContext_t * pMqttContext,
