@@ -254,7 +254,7 @@ void esp_mesh_mqtt_task_aws(void *arg)
     mqttContext = start_mqtt_connection(0, NULL);
     ESP_LOGI(MESH_TAG, "esp_mesh_mqtt_task_aws");
 
-    publishLoop( &mqttContext, "Init connection MQTT");
+    publishLoop( &mqttContext, "--OUT--", "/topic/init");
     vTaskDelete(NULL);
 }
 

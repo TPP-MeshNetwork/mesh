@@ -199,17 +199,6 @@ void cleanupOutgoingPublishWithPacketID( uint16_t packetId );
 void cleanupOutgoingPublishAt( uint8_t index );
 
 /**
- * @brief Sends an MQTT PUBLISH to #MQTT_EXAMPLE_TOPIC defined at
- * the top of the file.
- *
- * @param[in] pMqttContext MQTT context pointer.
- *
- * @return EXIT_SUCCESS if PUBLISH was successfully sent;
- * EXIT_FAILURE otherwise.
- */
-int publishToTopic( MQTTContext_t * pMqttContext, char * message);
-
-/**
  * @brief Function to clean up an outgoing publish at given index from the
  * #outgoingPublishPackets array.
  *

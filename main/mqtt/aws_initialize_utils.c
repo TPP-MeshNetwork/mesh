@@ -598,7 +598,7 @@ MQTTContext_t start_mqtt_connection(int argc, char ** argv) {
 
                 /* If TLS session is established, execute Subscribe/Publish loop. */
                 // returnStatus = subscribePublishLoop( &mqttContext );
-                //returnStatus = publishLoop( &mqttContext, "milos test 1");
+                returnStatus = publishLoop( &mqttContext, "****Init connection MQTT", "/topic/init");
 
                 /* End TLS session, then close TCP connection. */
                 // cleanupESPSecureMgrCerts( &xNetworkContext ); // TODO: Dont close

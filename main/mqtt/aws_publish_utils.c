@@ -11,6 +11,7 @@
 
 #include "mqtt/aws_variables.h"
 #include "mqtt/aws_publish_utils.h"
+#include "mqtt/aws_initialize_utils.h"
 
 /*-----------------------------------------------------------*/
 
@@ -127,13 +128,20 @@ int waitForPacketAck( MQTTContext_t * pMqttContext,
 /*-----------------------------------------------------------*/
 
 
-int publishToTopic( MQTTContext_t * pMqttContext, char * message )
+int publishToTopic( MQTTContext_t * pMqttContext, char * message, char * topicName)
 {
     int returnStatus = EXIT_SUCCESS;
     MQTTStatus_t mqttStatus = MQTTSuccess;
     uint8_t publishIndex = MAX_OUTGOING_PUBLISHES;
 
     assert( pMqttContext != NULL );
+
+    uint16_t lenTopic = strlen( topicName );
+
+    LogInfo( ( "Sending Publish to the MQTT topic %.*s. Message %s",
+                       lenTopic,
+                       topicName,
+                       message ) );
 
     /* Get the next free index for the outgoing publish. All QoS1 outgoing
      * publishes are stored until a PUBACK is received. These messages are
@@ -149,8 +157,8 @@ int publishToTopic( MQTTContext_t * pMqttContext, char * message )
     {
         /* This example publishes to only one topic and uses QOS1. */
         outgoingPublishPackets[ publishIndex ].pubInfo.qos = MQTTQoS1;
-        outgoingPublishPackets[ publishIndex ].pubInfo.pTopicName = MQTT_EXAMPLE_TOPIC;
-        outgoingPublishPackets[ publishIndex ].pubInfo.topicNameLength = MQTT_EXAMPLE_TOPIC_LENGTH;
+        outgoingPublishPackets[ publishIndex ].pubInfo.pTopicName = topicName;
+        outgoingPublishPackets[ publishIndex ].pubInfo.topicNameLength = lenTopic;
         outgoingPublishPackets[ publishIndex ].pubInfo.pPayload = message;
         outgoingPublishPackets[ publishIndex ].pubInfo.payloadLength = ( uint16_t ) (sizeof(message)*(sizeof(char *)) - 1);
 
@@ -172,8 +180,8 @@ int publishToTopic( MQTTContext_t * pMqttContext, char * message )
         else
         {
             LogInfo( ( "PUBLISH sent for topic %.*s to broker with packet ID %u.\n\n",
-                       MQTT_EXAMPLE_TOPIC_LENGTH,
-                       MQTT_EXAMPLE_TOPIC,
+                       lenTopic,
+                       topicName,
                        outgoingPublishPackets[ publishIndex ].packetId ) );
         }
     }
@@ -182,7 +190,7 @@ int publishToTopic( MQTTContext_t * pMqttContext, char * message )
 }
 
 
-int publishLoop( MQTTContext_t * pMqttContext, char * message)
+int publishLoop( MQTTContext_t * pMqttContext, char * message, char * topicName)
 {
     int returnStatus = EXIT_SUCCESS;
     MQTTStatus_t mqttStatus = MQTTSuccess;
@@ -197,10 +205,7 @@ int publishLoop( MQTTContext_t * pMqttContext, char * message)
          * send keep alive messages. */
         for( publishCount = 0; publishCount < maxPublishCount; publishCount++ )
         {
-            LogInfo( ( "Sending Publish to the MQTT topic %.*s.",
-                       MQTT_EXAMPLE_TOPIC_LENGTH,
-                       MQTT_EXAMPLE_TOPIC ) );
-            returnStatus = publishToTopic( pMqttContext, message );
+            returnStatus = publishToTopic( pMqttContext, message, topicName );
 
             /* Calling MQTT_ProcessLoop to process incoming publish echo, since
              * application subscribed to the same topic the broker will send
@@ -238,19 +243,19 @@ int publishLoop( MQTTContext_t * pMqttContext, char * message)
     /* Send an MQTT Disconnect packet over the already connected TCP socket.
      * There is no corresponding response for the disconnect packet. After sending
      * disconnect, client must close the network connection. */
-    // LogInfo( ( "Disconnecting the MQTT connection with %.*s.",
-    //            AWS_IOT_ENDPOINT_LENGTH,
-    //            AWS_IOT_ENDPOINT ) );
-    // if( returnStatus == EXIT_FAILURE )
-    // {
-    //     /* Returned status is not used to update the local status as there
-    //      * were failures in demo execution. */
-    //     ( void ) disconnectMqttSession( pMqttContext );
-    // }
-    // else
-    // {
-    //     returnStatus = disconnectMqttSession( pMqttContext );
-    // }
+    LogInfo( ( "Disconnecting the MQTT connection with %.*s.",
+               AWS_IOT_ENDPOINT_LENGTH,
+               AWS_IOT_ENDPOINT ) );
+    if( returnStatus == EXIT_FAILURE )
+    {
+        /* Returned status is not used to update the local status as there
+         * were failures in demo execution. */
+        ( void ) disconnectMqttSession( pMqttContext );
+    }
+    else
+    {
+        returnStatus = disconnectMqttSession( pMqttContext );
+    }
 
     /* Reset global SUBACK status variable after completion of subscription request cycle. */
     globalSubAckStatus = MQTTSubAckFailure;
