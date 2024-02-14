@@ -138,16 +138,19 @@ int disconnectMqttSession( MQTTContext_t * pMqttContext )
 /*-----------------------------------------------------------*/
 
 void handleIncomingPublish( MQTTPublishInfo_t * pPublishInfo,
-                                   uint16_t packetIdentifier )
+                                   uint16_t packetIdentifier,
+                                   char * topicName )
 {
     assert( pPublishInfo != NULL );
 
     /* Process incoming Publish. */
     LogInfo( ( "Incoming QOS : %d.", pPublishInfo->qos ) );
 
+    uint16_t lenTopic = strlen( topicName );
+
     /* Verify the received publish is for the topic we have subscribed to. */
-    if( ( pPublishInfo->topicNameLength == MQTT_EXAMPLE_TOPIC_LENGTH ) &&
-        ( 0 == strncmp( MQTT_EXAMPLE_TOPIC,
+    if( ( pPublishInfo->topicNameLength == lenTopic ) &&
+        ( 0 == strncmp( topicName,
                         pPublishInfo->pTopicName,
                         pPublishInfo->topicNameLength ) ) )
     {
@@ -215,13 +218,16 @@ void updateSubAckStatus( MQTTPacketInfo_t * pPacketInfo )
 
 void eventCallback( MQTTContext_t * pMqttContext,
                            MQTTPacketInfo_t * pPacketInfo,
-                           MQTTDeserializedInfo_t * pDeserializedInfo )
+                           MQTTDeserializedInfo_t * pDeserializedInfo,
+                           char * topicName )
 {
     uint16_t packetIdentifier;
 
     assert( pMqttContext != NULL );
     assert( pPacketInfo != NULL );
     assert( pDeserializedInfo != NULL );
+
+    uint16_t lenTopic = strlen( topicName );
 
     /* Suppress unused parameter warning when asserts are disabled in build. */
     ( void ) pMqttContext;
@@ -235,7 +241,7 @@ void eventCallback( MQTTContext_t * pMqttContext,
     {
         assert( pDeserializedInfo->pPublishInfo != NULL );
         /* Handle incoming publish. */
-        handleIncomingPublish( pDeserializedInfo->pPublishInfo, packetIdentifier );
+        handleIncomingPublish( pDeserializedInfo->pPublishInfo, packetIdentifier, topicName );
     }
     else
     {
@@ -256,8 +262,8 @@ void eventCallback( MQTTContext_t * pMqttContext,
                 if( globalSubAckStatus != MQTTSubAckFailure )
                 {
                     LogInfo( ( "Subscribed to the topic %.*s. with maximum QoS %u.\n\n",
-                               MQTT_EXAMPLE_TOPIC_LENGTH,
-                               MQTT_EXAMPLE_TOPIC,
+                               lenTopic,
+                               topicName,
                                globalSubAckStatus ) );
                 }
 
@@ -270,8 +276,8 @@ void eventCallback( MQTTContext_t * pMqttContext,
 
             case MQTT_PACKET_TYPE_UNSUBACK:
                 LogInfo( ( "Unsubscribed from the topic %.*s.\n\n",
-                           MQTT_EXAMPLE_TOPIC_LENGTH,
-                           MQTT_EXAMPLE_TOPIC ) );
+                           lenTopic,
+                           topicName ) );
                 /* Make sure ACK packet identifier matches with Request packet identifier. */
                 assert( globalUnsubscribePacketIdentifier == packetIdentifier );
 

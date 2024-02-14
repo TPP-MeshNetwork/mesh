@@ -13,7 +13,8 @@
  */
 void eventCallback( MQTTContext_t * pMqttContext,
                            MQTTPacketInfo_t * pPacketInfo,
-                           MQTTDeserializedInfo_t * pDeserializedInfo );
+                           MQTTDeserializedInfo_t * pDeserializedInfo,
+                           char * topicName );
 
 
 /**

@@ -175,18 +175,6 @@ typedef struct PublishPackets
 
 /*-----------------------------------------------------------*/
 
-/**
- * @brief The topic to subscribe and publish to in the example.
- *
- * The topic name starts with the client identifier to ensure that each demo
- * interacts with a unique topic name.
- */
-#define MQTT_EXAMPLE_TOPIC                  CLIENT_IDENTIFIER "/example/topic"
-
-/**
- * @brief Length of client MQTT topic.
- */
-#define MQTT_EXAMPLE_TOPIC_LENGTH           ( ( uint16_t ) ( sizeof( MQTT_EXAMPLE_TOPIC ) - 1 ) )
 
 /**
  * @brief Maximum number of outgoing publishes maintained in the application
