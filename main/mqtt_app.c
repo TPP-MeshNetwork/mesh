@@ -18,9 +18,7 @@
 #include "nvs_helper.h"
 
 #include "mqtt/aws_variables.h"
-//#include "mqtt/aws_utils.h"
 
-MQTTContext_t start_mqtt_connection( int argc, char ** argv );
 
 
 static const char *TAG = "mesh_mqtt";
@@ -87,10 +85,6 @@ void mqtt_app_publish(const char* topic, const char* publish_prefix, char *publi
 }
 /*
 void mqtt_app_start(uint8_t mac[6]) {
-    //MQTTContext_t mqttContext = {0};
-    //mqttContext = start_mqtt_connection(0, NULL);
-    //publishLoop( &mqttContext, "Init connection MQTT");
-
     // if (mac == NULL) {
     //     ESP_LOGE(TAG, "MAC address is NULL must provide a valid mac address to start Mqtt");
     //     return;

@@ -148,7 +148,6 @@ void esp_mesh_routing_table_task(void *arg)
     esp_err_t err;
     uint8_t mac[6];
     esp_wifi_get_mac(WIFI_IF_STA, mac);
-    // mqtt_app_start(mac);
     while (is_running)
     {
         // asprintf(&print, "{'layer': %d, 'IP': '" IPSTR "'}", esp_mesh_get_layer(), IP2STR(&s_current_ip));
@@ -247,7 +246,6 @@ void esp_mesh_task_mqtt_keepalive(void *arg)
 
 void esp_mesh_mqtt_task_aws(void *arg)
 {
-    //aws_iot_demo_main(0, NULL);
     MQTTContext_t mqttContext = {0};
     mqttContext = start_mqtt_connection(0, NULL);
     ESP_LOGI(MESH_TAG, "esp_mesh_mqtt_task_aws");
