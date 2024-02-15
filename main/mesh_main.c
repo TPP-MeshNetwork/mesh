@@ -20,6 +20,7 @@
 #include <components/dht.h>
 #include "mqtt/aws_utils.h"
 #include "mqtt/aws_publish_utils.h"
+#include "mqtt/aws_initialize_utils.h"
 
 
 
@@ -42,6 +43,9 @@
 static const char *MESH_TAG = "mesh_main";
 static const uint8_t MESH_ID[MESH_ID_SIZE] = {0x77, 0x77, 0x77, 0x77, 0x77, 0x76};
 
+QueueHandle_t queue;
+int queueSize = 10;
+
 /*******************************************************
  *                Variable Definitions
  *******************************************************/
@@ -60,12 +64,6 @@ static uint8_t s_mesh_tx_payload[CONFIG_MESH_ROUTE_TABLE_SIZE * 6 + 1];
 // interaction with public mqtt broker
 void mqtt_app_start(uint8_t *mac);
 void mqtt_app_publish(const char *topic, const char *publish_prefix, char *publish_string);
-
-/*******************************************************
- *                Function Definitions
- *******************************************************/
-int aws_iot_demo_main( int argc, char ** argv );
-MQTTContext_t start_mqtt_connection( int argc, char ** argv );
 
 
 
@@ -142,7 +140,7 @@ static void read_sensor_data(void *args)
     vTaskDelete(NULL);
 }
 
-void esp_mesh_mqtt_task(void *arg)
+void esp_mesh_routing_table_task(void *arg)
 {
     is_running = true;
     char *print;
@@ -254,7 +252,7 @@ void esp_mesh_mqtt_task_aws(void *arg)
     mqttContext = start_mqtt_connection(0, NULL);
     ESP_LOGI(MESH_TAG, "esp_mesh_mqtt_task_aws");
 
-    publishLoop( &mqttContext, "--OUT--", "/topic/init");
+    //publishLoop( &mqttContext, "--OUT--", "/topic/init");
     vTaskDelete(NULL);
 }
 
@@ -263,11 +261,17 @@ esp_err_t esp_mesh_comm_mqtt_task_start(void)
     static bool is_comm_mqtt_task_started = false;
 
     s_route_table_lock = xSemaphoreCreateMutex();
+ 
+    queue = xQueueCreate( queueSize, sizeof( int ) );
+    
+    if(queue == NULL){
+        ESP_LOGI(MESH_TAG, "Error creating the queue");
+    }
 
     if (!is_comm_mqtt_task_started)
     {
         xTaskCreate(esp_mesh_mqtt_task_aws, "mqtt task-aws", 3072, NULL, 5, NULL);
-        xTaskCreate(esp_mesh_mqtt_task, "mqtt task", 3072, NULL, 5, NULL);
+        xTaskCreate(esp_mesh_routing_table_task, "mqtt routing-table", 3072, NULL, 5, NULL);
         // xTaskCreate(read_sensor_data, "Read sensor data from sensor", 3072, NULL, 5, NULL);
         // xTaskCreate(esp_mesh_task_mqtt_graph, "Graph logging task", 3072, NULL, 5, NULL);
         // xTaskCreate(esp_mesh_task_mqtt_keepalive, "Keepalive task", 3072, NULL, 5, NULL);

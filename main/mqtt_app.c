@@ -85,10 +85,8 @@ void mqtt_app_publish(const char* topic, const char* publish_prefix, char *publi
     }
     free(full_message);
 }
-
+/*
 void mqtt_app_start(uint8_t mac[6]) {
-
-    
     //MQTTContext_t mqttContext = {0};
     //mqttContext = start_mqtt_connection(0, NULL);
     //publishLoop( &mqttContext, "Init connection MQTT");
@@ -159,3 +157,4 @@ void mqtt_app_start(uint8_t mac[6]) {
 //     free(last_will_topic);
 //     free(last_will_message);
 }
+*/
