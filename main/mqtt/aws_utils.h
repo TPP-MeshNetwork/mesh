@@ -95,19 +95,6 @@ void cleanupOutgoingPublishAt( uint8_t index );
                              
 
 /**
- * @brief The application callback function for getting the incoming publish
- * and incoming acks reported from MQTT library.
- *
- * @param[in] pMqttContext MQTT context pointer.
- * @param[in] pPacketInfo Packet Info pointer for the incoming packet.
- * @param[in] pDeserializedInfo Deserialized information from the incoming packet.
- */
-void eventCallback( MQTTContext_t * pMqttContext,
-                           MQTTPacketInfo_t * pPacketInfo,
-                           MQTTDeserializedInfo_t * pDeserializedInfo );
-
-
-/**
  * @brief Close an MQTT session by sending MQTT DISCONNECT.
  *
  * @param[in] pMqttContext MQTT context pointer.
