@@ -243,19 +243,19 @@ int publishLoop( MQTTContext_t * pMqttContext, char * message, char * topicName)
     /* Send an MQTT Disconnect packet over the already connected TCP socket.
      * There is no corresponding response for the disconnect packet. After sending
      * disconnect, client must close the network connection. */
-    LogInfo( ( "Disconnecting the MQTT connection with %.*s.",
-               AWS_IOT_ENDPOINT_LENGTH,
-               AWS_IOT_ENDPOINT ) );
-    if( returnStatus == EXIT_FAILURE )
-    {
-        /* Returned status is not used to update the local status as there
-         * were failures in demo execution. */
-        ( void ) disconnectMqttSession( pMqttContext );
-    }
-    else
-    {
-        returnStatus = disconnectMqttSession( pMqttContext );
-    }
+    // LogInfo( ( "Disconnecting the MQTT connection with %.*s.",
+    //            AWS_IOT_ENDPOINT_LENGTH,
+    //            AWS_IOT_ENDPOINT ) );
+    // if( returnStatus == EXIT_FAILURE )
+    // {
+    //     /* Returned status is not used to update the local status as there
+    //      * were failures in demo execution. */
+    //     ( void ) disconnectMqttSession( pMqttContext );
+    // }
+    // else
+    // {
+    //     returnStatus = disconnectMqttSession( pMqttContext );
+    // }
 
     /* Reset global SUBACK status variable after completion of subscription request cycle. */
     globalSubAckStatus = MQTTSubAckFailure;

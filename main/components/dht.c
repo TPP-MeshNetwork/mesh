@@ -240,11 +240,19 @@ esp_err_t dht_read_data(dht_sensor_type_t sensor_type, gpio_num_t pin,
 }
 
 esp_err_t dht_read_float_data(dht_sensor_type_t sensor_type, gpio_num_t pin,
-        float *humidity, float *temperature)
+        float *humidity, float *temperature, bool mock)
 {
     CHECK_ARG(humidity || temperature);
 
     int16_t i_humidity, i_temp;
+
+    if (mock) {
+        if (humidity)
+            *humidity = 50.0;
+        if (temperature)
+            *temperature = 25.0;
+        return ESP_OK;
+    }
 
     esp_err_t res = dht_read_data(sensor_type, pin, humidity ? &i_humidity : NULL, temperature ? &i_temp : NULL);
     if (res != ESP_OK)

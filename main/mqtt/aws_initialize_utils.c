@@ -545,7 +545,7 @@ int initializeMqtt( MQTTContext_t * pMqttContext,
 }
 
 
-MQTTContext_t start_mqtt_connection(int argc, char ** argv) {
+MQTTContext_t start_mqtt_connection(void) {
     int returnStatus = EXIT_SUCCESS;
     MQTTContext_t mqttContext = { 0 };
     NetworkContext_t xNetworkContext = { 0 }; // TODO: Make it global??  to close conection later ??
@@ -555,10 +555,7 @@ MQTTContext_t start_mqtt_connection(int argc, char ** argv) {
      * done only once in this demo. */
     returnStatus = initializeMqtt( &mqttContext, &xNetworkContext );
 
-    if( returnStatus == EXIT_SUCCESS )
-    {
-        for( ; ; )
-        {
+    if( returnStatus == EXIT_SUCCESS ) {
             /* Attempt to connect to the MQTT broker. If connection fails, retry after
              * a timeout. Timeout value will be exponentially increased till the maximum
              * attempts are reached or maximum timeout value is reached. The function
@@ -566,16 +563,14 @@ MQTTContext_t start_mqtt_connection(int argc, char ** argv) {
              * broker after configured number of attempts. */
             returnStatus = connectToServerWithBackoffRetries( &xNetworkContext, &mqttContext, &clientSessionPresent, &brokerSessionPresent );
 
-            if( returnStatus == EXIT_FAILURE )
-            {
+            if( returnStatus == EXIT_FAILURE ) {
                 /* Log error to indicate connection failure after all
                  * reconnect attempts are over. */
                 LogError( ( "Failed to connect to MQTT broker %.*s.",
                             AWS_IOT_ENDPOINT_LENGTH,
                             AWS_IOT_ENDPOINT ) );
             }
-            else
-            {
+            else {
                 /* Update the flag to indicate that an MQTT client session is saved.
                  * Once this flag is set, MQTT connect in the following iterations of
                  * this demo will be attempted without requesting for a clean session. */
@@ -584,16 +579,14 @@ MQTTContext_t start_mqtt_connection(int argc, char ** argv) {
                 /* Check if session is present and if there are any outgoing publishes
                  * that need to resend. This is only valid if the broker is
                  * re-establishing a session which was already present. */
-                if( brokerSessionPresent == true )
-                {
+                if( brokerSessionPresent == true ) {
                     LogInfo( ( "An MQTT session with broker is re-established. "
                                "Resending unacked publishes." ) );
 
                     /* Handle all the resend of publish messages. */ // TODO: CHECK THIS
                     //returnStatus = handlePublishResend( &mqttContext );
                 }
-                else
-                {
+                else {
                     LogInfo( ( "A clean MQTT connection is established."
                                " Cleaning up all the stored outgoing publishes.\n\n" ) );
 
@@ -604,22 +597,12 @@ MQTTContext_t start_mqtt_connection(int argc, char ** argv) {
 
                 /* If TLS session is established, execute Subscribe/Publish loop. */
                 // returnStatus = subscribePublishLoop( &mqttContext );
-                returnStatus = publishLoop( &mqttContext, "****Init connection MQTT", "/topic/init");
+                // returnStatus = publishLoop( &mqttContext, "****Init connection MQTT", "/topic/init");
 
                 /* End TLS session, then close TCP connection. */
                 // cleanupESPSecureMgrCerts( &xNetworkContext ); // TODO: Dont close
                 // ( void ) xTlsDisconnect( &xNetworkContext ); // TODO: Dont close
             }
-
-            // if( returnStatus == EXIT_SUCCESS )
-            // {
-            //     /* Log message indicating an iteration completed successfully. */
-            //     LogInfo( ( "Demo completed successfully." ) );
-            // }
-
-            LogInfo( ( "Short delay before starting the next iteration....\n" ) );
-            sleep( MQTT_SUBPUB_LOOP_DELAY_SECONDS );
-        }
     }
     return mqttContext;
 }

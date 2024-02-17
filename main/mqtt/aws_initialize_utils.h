@@ -104,7 +104,4 @@ void cleanupOutgoingPublishWithPacketID( uint16_t packetId );
  *                Function Definitions
  *******************************************************/
 
-MQTTContext_t start_mqtt_connection( int argc, char ** argv );
-
-int aws_iot_demo_main( int argc, char ** argv );
-
+MQTTContext_t start_mqtt_connection(void);
