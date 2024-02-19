@@ -11,14 +11,6 @@
 
 
 /**
- * @brief Function to clean up an outgoing publish at given index from the
- * #outgoingPublishPackets array.
- *
- * @param[in] index The index at which a publish message has to be cleaned up.
- */
-void cleanupOutgoingPublishAt( uint8_t index );
-
-/**
  * @brief Function to get the free index at which an outgoing publish
  * can be stored.
  *

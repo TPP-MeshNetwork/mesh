@@ -98,9 +98,9 @@ static void read_sensor_data(void *args) {
     float sensor_data[sensor_length];
 
     while (1) {
-        bool mocked = true;
+        bool mocked = false;
         if (dht_read_float_data(SENSOR_TYPE, CONFIG_EXAMPLE_DATA_GPIO, sensor_data + 1, sensor_data, mocked) == ESP_OK)
-            ESP_LOGI(MESH_TAG, "%s: %.1fC\n", sensor_name[0], sensor_data[0]);
+            ESP_LOGI(MESkH_TAG, "%s: %.1fC\n", sensor_name[0], sensor_data[0]);
         else {
             // stopping reading sensor if it fails too many times
             tries++;

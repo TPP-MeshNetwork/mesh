@@ -144,15 +144,6 @@ int connectToServerWithBackoffRetries( NetworkContext_t * pNetworkContext,
 void cleanupOutgoingPublishes( void );
 
 /**
- * @brief Function to update variable globalSubAckStatus with status
- * information from Subscribe ACK. Called by eventCallback after processing
- * incoming subscribe echo.
- *
- * @param[in] Server response to the subscription request.
- */
-void updateSubAckStatus( MQTTPacketInfo_t * pPacketInfo );
-
-/**
  * @brief Sends an MQTT CONNECT packet over the already connected TCP socket.
  *
  * @param[in] pMqttContext MQTT context pointer.
