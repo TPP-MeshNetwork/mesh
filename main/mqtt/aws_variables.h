@@ -222,7 +222,7 @@ typedef struct PublishPackets
  * it is used to match received Unsubscribe ACK to the transmitted unsubscribe
  * request.
  */
-static uint16_t globalUnsubscribePacketIdentifier = 0U;
+uint16_t globalUnsubscribePacketIdentifier = 0U;
 
 /**
  * @brief Array to keep the outgoing publish messages.
@@ -236,13 +236,13 @@ extern PublishPackets_t outgoingPublishPackets[ MAX_OUTGOING_PUBLISHES ];
  * it is updated every time the callback function processes a Subscribe ACK
  * and accounts for subscription to a single topic.
  */
-static MQTTSubAckStatus_t globalSubAckStatus = MQTTSubAckFailure;
+MQTTSubAckStatus_t globalSubAckStatus = MQTTSubAckFailure;
 
 /**
  * @brief Packet Identifier generated when Subscribe request was sent to the broker;
  * it is used to match received Subscribe ACK to the transmitted subscribe.
  */
-static uint16_t globalSubscribePacketIdentifier = 0U;
+uint16_t globalSubscribePacketIdentifier = 0U;
 
 /**
  * @brief Array to track the outgoing publish records for outgoing publishes
@@ -251,18 +251,18 @@ static uint16_t globalSubscribePacketIdentifier = 0U;
  * This is passed into #MQTT_InitStatefulQoS to allow for QoS > 0.
  *
  */
-static MQTTPubAckInfo_t pOutgoingPublishRecords[ OUTGOING_PUBLISH_RECORD_LEN ];
+MQTTPubAckInfo_t pOutgoingPublishRecords[ OUTGOING_PUBLISH_RECORD_LEN ];
 
 /**
  * @brief Static buffer for TLS Context Semaphore.
  */
-static StaticSemaphore_t xTlsContextSemaphoreBuffer;
+StaticSemaphore_t xTlsContextSemaphoreBuffer;
 /**
  * @brief Packet Identifier updated when an ACK packet is received.
  *
  * It is used to match an expected ACK for a transmitted packet.
  */
-static uint16_t globalAckPacketIdentifier = 0U;
+uint16_t globalAckPacketIdentifier = 0U;
 
 /**
  * @brief Array to track the incoming publish records for incoming publishes
@@ -271,18 +271,18 @@ static uint16_t globalAckPacketIdentifier = 0U;
  * This is passed into #MQTT_InitStatefulQoS to allow for QoS > 0.
  *
  */
-static MQTTPubAckInfo_t pIncomingPublishRecords[ INCOMING_PUBLISH_RECORD_LEN ];
+MQTTPubAckInfo_t pIncomingPublishRecords[ INCOMING_PUBLISH_RECORD_LEN ];
 
 /**
  * @brief The network buffer must remain valid for the lifetime of the MQTT context.
  */
-static uint8_t buffer[ NETWORK_BUFFER_SIZE ];
+uint8_t buffer[ NETWORK_BUFFER_SIZE ];
 
 /**
  * @brief Array to keep subscription topics.
  * Used to re-subscribe to topics that failed initial subscription attempts.
  */
-static MQTTSubscribeInfo_t pGlobalSubscriptionList[ 1 ];
+MQTTSubscribeInfo_t pGlobalSubscriptionList[ 1 ];
 
 
 #endif  // AWS_VARS_H

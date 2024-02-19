@@ -17,48 +17,13 @@
 #include "clock.h"
 
 #include "mqtt/aws_variables.h"
+#include "mqtt/aws_publish_utils.h"
+#include "mqtt/aws_initialize_utils.h"
 
 
 
-static uint32_t generateRandomNumber()
-{
+static uint32_t generateRandomNumber() {
     return( rand() );
-}
-
-/*-----------------------------------------------------------*/
-
-
-static void cleanupOutgoingPublishAt( uint8_t index )
-{
-    assert( outgoingPublishPackets != NULL );
-    assert( index < MAX_OUTGOING_PUBLISHES );
-
-    /* Clear the outgoing publish packet. */
-    ( void ) memset( &( outgoingPublishPackets[ index ] ),
-                     0x00,
-                     sizeof( outgoingPublishPackets[ index ] ) );
-}
-
-/*-----------------------------------------------------------*/
-
-static void cleanupOutgoingPublishWithPacketID( uint16_t packetId )
-{
-    uint8_t index = 0;
-
-    assert( outgoingPublishPackets != NULL );
-    assert( packetId != MQTT_PACKET_ID_INVALID );
-
-    /* Clean up all the saved outgoing publishes. */
-    for( ; index < MAX_OUTGOING_PUBLISHES; index++ )
-    {
-        if( outgoingPublishPackets[ index ].packetId == packetId )
-        {
-            cleanupOutgoingPublishAt( index );
-            LogInfo( ( "Cleaned up outgoing publish packet with packet id %u.\n\n",
-                       packetId ) );
-            break;
-        }
-    }
 }
 
 /*-----------------------------------------------------------*/
@@ -139,76 +104,7 @@ static int handlePublishResend( MQTTContext_t * pMqttContext )
 
 /*-----------------------------------------------------------*/
 
-static void updateSubAckStatus( MQTTPacketInfo_t * pPacketInfo )
-{
-    uint8_t * pPayload = NULL;
-    size_t pSize = 0;
-
-    MQTTStatus_t mqttStatus = MQTT_GetSubAckStatusCodes( pPacketInfo, &pPayload, &pSize );
-
-    /* MQTT_GetSubAckStatusCodes always returns success if called with packet info
-     * from the event callback and non-NULL parameters. */
-    assert( mqttStatus == MQTTSuccess );
-
-    /* Suppress unused variable warning when asserts are disabled in build. */
-    ( void ) mqttStatus;
-
-    /* Demo only subscribes to one topic, so only one status code is returned. */
-    globalSubAckStatus = ( MQTTSubAckStatus_t ) pPayload[ 0 ];
-}
-
-/*-----------------------------------------------------------*/
-
-static int waitForPacketAck( MQTTContext_t * pMqttContext,
-                             uint16_t usPacketIdentifier,
-                             uint32_t ulTimeout )
-{
-    uint32_t ulMqttProcessLoopEntryTime;
-    uint32_t ulMqttProcessLoopTimeoutTime;
-    uint32_t ulCurrentTime;
-
-    MQTTStatus_t eMqttStatus = MQTTSuccess;
-    int returnStatus = EXIT_FAILURE;
-
-    /* Reset the ACK packet identifier being received. */
-    globalAckPacketIdentifier = 0U;
-
-    ulCurrentTime = pMqttContext->getTime();
-    ulMqttProcessLoopEntryTime = ulCurrentTime;
-    ulMqttProcessLoopTimeoutTime = ulCurrentTime + ulTimeout;
-
-    /* Call MQTT_ProcessLoop multiple times until the expected packet ACK
-     * is received, a timeout happens, or MQTT_ProcessLoop fails. */
-    while( ( globalAckPacketIdentifier != usPacketIdentifier ) &&
-           ( ulCurrentTime < ulMqttProcessLoopTimeoutTime ) &&
-           ( eMqttStatus == MQTTSuccess || eMqttStatus == MQTTNeedMoreBytes ) )
-    {
-        /* Event callback will set #globalAckPacketIdentifier when receiving
-         * appropriate packet. */
-        eMqttStatus = MQTT_ProcessLoop( pMqttContext );
-        ulCurrentTime = pMqttContext->getTime();
-    }
-
-    if( ( ( eMqttStatus != MQTTSuccess ) && ( eMqttStatus != MQTTNeedMoreBytes ) ) ||
-        ( globalAckPacketIdentifier != usPacketIdentifier ) )
-    {
-        LogError( ( "MQTT_ProcessLoop failed to receive ACK packet: Expected ACK Packet ID=%02"PRIx16", LoopDuration=%"PRIu32", Status=%s",
-                    usPacketIdentifier,
-                    ( ulCurrentTime - ulMqttProcessLoopEntryTime ),
-                    MQTT_Status_strerror( eMqttStatus ) ) );
-    }
-    else
-    {
-        returnStatus = EXIT_SUCCESS;
-    }
-
-    return returnStatus;
-}
-
-/*-----------------------------------------------------------*/
-
-static int handleResubscribe( MQTTContext_t * pMqttContext )
-{
+int handleResubscribe( MQTTContext_t * pMqttContext ) {
     int returnStatus = EXIT_SUCCESS;
     MQTTStatus_t mqttStatus = MQTTSuccess;
     BackoffAlgorithmStatus_t backoffAlgStatus = BackoffAlgorithmSuccess;
@@ -223,8 +119,7 @@ static int handleResubscribe( MQTTContext_t * pMqttContext )
                                        CONNECTION_RETRY_MAX_BACKOFF_DELAY_MS,
                                        CONNECTION_RETRY_MAX_ATTEMPTS );
 
-    do
-    {
+    do {
         /* Send SUBSCRIBE packet.
          * Note: reusing the value specified in globalSubscribePacketIdentifier is acceptable here
          * because this function is entered only after the receipt of a SUBACK, at which point
@@ -286,8 +181,7 @@ static int handleResubscribe( MQTTContext_t * pMqttContext )
 
 /*-----------------------------------------------------------*/
 
-static int subscribeToTopic( MQTTContext_t * pMqttContext )
-{
+int subscribeToTopic( MQTTContext_t * pMqttContext ) {
     int returnStatus = EXIT_SUCCESS;
     MQTTStatus_t mqttStatus;
 
@@ -329,8 +223,7 @@ static int subscribeToTopic( MQTTContext_t * pMqttContext )
 /*-----------------------------------------------------------*/
 
 
-static int unsubscribeFromTopic( MQTTContext_t * pMqttContext )
-{
+int unsubscribeFromTopic( MQTTContext_t * pMqttContext ) {
     int returnStatus = EXIT_SUCCESS;
     MQTTStatus_t mqttStatus;
 
