@@ -75,6 +75,8 @@ typedef struct PublishPackets
     MQTTPublishInfo_t pubInfo;
 } PublishPackets_t;
 
+#ifndef AWS_VARS_H
+#define AWS_VARS_H
 
 /**
  * @brief ALPN (Application-Layer Protocol Negotiation) protocol name for AWS IoT MQTT.
@@ -227,7 +229,7 @@ static uint16_t globalUnsubscribePacketIdentifier = 0U;
  * These stored outgoing publish messages are kept until a successful ack
  * is received.
  */
-static PublishPackets_t outgoingPublishPackets[ MAX_OUTGOING_PUBLISHES ] = { 0 };
+extern PublishPackets_t outgoingPublishPackets[ MAX_OUTGOING_PUBLISHES ];
 
 /**
  * @brief Status of latest Subscribe ACK;
@@ -283,3 +285,5 @@ static uint8_t buffer[ NETWORK_BUFFER_SIZE ];
 static MQTTSubscribeInfo_t pGlobalSubscriptionList[ 1 ];
 
 
+#endif  // AWS_VARS_H
+/*-----------------------------------------------------------*/
