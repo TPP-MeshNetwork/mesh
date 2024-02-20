@@ -90,7 +90,7 @@ esp_err_t dht_read_data(dht_sensor_type_t sensor_type, gpio_num_t pin,
  * @return `ESP_OK` on success
  */
 esp_err_t dht_read_float_data(dht_sensor_type_t sensor_type, gpio_num_t pin,
-        float *humidity, float *temperature, bool mock);
+        float *humidity, float *temperature);
 
 #ifdef __cplusplus
 }

@@ -1,6 +1,6 @@
 // Building mqtt queues for inter task communication
-#include "freertos/semphr.h"
 
+#include <freertos/queue.h>
 typedef struct {
     QueueHandle_t mqttPublisherQueue;
     QueueHandle_t mqttSuscriberQueue;    
@@ -12,4 +12,4 @@ typedef struct {
 } mqtt_message_t;
 
 
-int queueSize = 100;
+int queueSize = 5;

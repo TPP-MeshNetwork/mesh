@@ -7,9 +7,6 @@
 # cache dir
 .cache/
 
-# VS Code Settings
-.vscode/
-
 # ESP-IDF default build directory name
 build
 build_esp*_*/

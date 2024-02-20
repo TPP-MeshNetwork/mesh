@@ -22,6 +22,8 @@
 #include "mqtt/aws_initialize_utils.h"
 
 #include "mqtt_queue.h"
+#include "network_transport.h"
+
 
 /*******************************************************
  *                Macros
@@ -38,7 +40,7 @@ static const char *MESH_TAG = "mesh_main";
 static const uint8_t MESH_ID[MESH_ID_SIZE] = {0x77, 0x77, 0x77, 0x77, 0x77, 0x76};
 
 /*******************************************************
- *                Variable Definitions
+ *                Variable Definitions for Mesh
  *******************************************************/
 static bool is_running = true;
 static mesh_addr_t mesh_parent_addr;
@@ -48,14 +50,6 @@ static mesh_addr_t s_route_table[CONFIG_MESH_ROUTE_TABLE_SIZE];
 static int s_route_table_size = 0;
 static SemaphoreHandle_t s_route_table_lock = NULL;
 static uint8_t s_mesh_tx_payload[CONFIG_MESH_ROUTE_TABLE_SIZE * 6 + 1];
-
-/*******************************************************
- *                Function Declarations
- *******************************************************/
-// interaction with public mqtt broker
-// void mqtt_app_start(uint8_t *mac);
-// void mqtt_app_publish(const char *topic, const char *publish_prefix, char *publish_string);
-
 
 
 void publish(QueueHandle_t publishQueue, const char * topic, const char * message) {
@@ -87,7 +81,7 @@ void static recv_cb(mesh_addr_t *from, mesh_data_t *data) {
 
 
 static void read_sensor_data(void *args) {
-    mqtt_queues_t *mqtt_queues = (mqtt_queues_t *)args;
+    mqtt_queues_t *mqtt_queues = (mqtt_queues_t *) args;
     char *sensor_print;
     const int max_tries = 10;
     int tries = 0;
@@ -97,10 +91,16 @@ static void read_sensor_data(void *args) {
     size_t sensor_length = sizeof(sensor_name) / sizeof(sensor_name[0]);
     float sensor_data[sensor_length];
 
+    bool mocked = true;
+
     while (1) {
-        bool mocked = false;
-        if (dht_read_float_data(SENSOR_TYPE, CONFIG_EXAMPLE_DATA_GPIO, sensor_data + 1, sensor_data, mocked) == ESP_OK)
-            ESP_LOGI(MESkH_TAG, "%s: %.1fC\n", sensor_name[0], sensor_data[0]);
+        if (mocked) {
+            sensor_data[0] = 75.0;
+            sensor_data[1] = 50.0;
+            ESP_LOGI(MESH_TAG, "%s: %.1fC\n", sensor_name[0], sensor_data[0]);
+        } 
+        // else if (dht_read_float_data(SENSOR_TYPE, CONFIG_EXAMPLE_DATA_GPIO, sensor_data + 1, sensor_data) == ESP_OK)
+        //     ESP_LOGI(MESH_TAG, "%s: %.1fC\n", sensor_name[0], sensor_data[0]);
         else {
             // stopping reading sensor if it fails too many times
             tries++;
@@ -114,8 +114,11 @@ static void read_sensor_data(void *args) {
         for (size_t i = 0; i < sensor_length; i++) {
             // TODO: DEFINIR MENSAJES A ENVIAR!! MESH TAG NO SIRVE
             asprintf(&sensor_print, "{'factoryTag': '%s', '%s': %.1f}", MESH_TAG, sensor_name[i], sensor_data[i]);
-            ESP_LOGI(MESH_TAG, "Tried to publish %s", sensor_print);
-            publish(mqtt_queues->mqttPublisherQueue, (char*)sensor_topic[i], sensor_print);
+            ESP_LOGI(MESH_TAG, "Trying to queue message: %s", sensor_print);
+            if (mqtt_queues->mqttPublisherQueue != NULL) {
+                publish(mqtt_queues->mqttPublisherQueue, (char*)sensor_topic[i], sensor_print);
+                ESP_LOGI(MESH_TAG, "queued done: %s", sensor_print);
+            }
             free(sensor_print);
         }
 
@@ -217,25 +220,41 @@ void esp_mesh_routing_table_task(void *arg) {
 // }
 
 
-void esp_mesh_mqtt_task_aws(void *arg) {
+void esp_mesh_mqtt_task_aws(void *args) {
     // read mqtt queues from arg
-    mqtt_queues_t *mqtt_queues = (mqtt_queues_t *)arg;
+    mqtt_queues_t *mqtt_queues = (mqtt_queues_t *) args;
 
-    MQTTContext_t mqttContext = {0};
-    mqttContext = start_mqtt_connection();
+    MQTTContext_t mqttContext = { 0 };
+    NetworkContext_t xNetworkContext = { 0 };
+
     ESP_LOGI(MESH_TAG, "esp_mesh_mqtt_task_aws");
 
+    int mqtt_connection_status = start_mqtt_connection(&mqttContext, &xNetworkContext);
     while(1) {
+        while (mqtt_connection_status == EXIT_FAILURE) {
+                mqtt_connection_status = start_mqtt_connection(&mqttContext, &xNetworkContext);
+                vTaskDelay(1000 / portTICK_PERIOD_MS);
+        }
         // read queue for messages to publish
-        mqtt_message_t message;
-        if (xQueueReceive(mqtt_queues->mqttPublisherQueue, &message, 0) == pdTRUE) {
-            ESP_LOGI(MESH_TAG, "Received message to publish: %s on topic: %s", message.message, message.topic);
-            int returnStatus = publishLoop( &mqttContext, message.message, message.topic);
-            if (returnStatus != pdPASS) {
-                ESP_LOGI(MESH_TAG, "Error in publishLoop");
-                mqttContext = start_mqtt_connection();
+        mqtt_message_t *buffer = malloc(sizeof(mqtt_message_t));
+        if (buffer == NULL) {
+            // Handle allocation failure
+            ESP_LOGE(MESH_TAG, "Failed to allocate memory for buffer");
+        } else {
+            // memset(buffer, 0, sizeof(mqtt_message_t));
+            if (mqtt_queues->mqttPublisherQueue!=NULL) {
+                if (xQueueReceive(mqtt_queues->mqttPublisherQueue, (void *) buffer, 0) == pdTRUE) {
+                    ESP_LOGI(MESH_TAG, "Received message to publish: %s on topic: %s", buffer->message, buffer->topic);
+                    int returnStatus = publishLoop( &mqttContext, buffer->message, buffer->topic);
+                    if (returnStatus != pdPASS) {
+                        ESP_LOGI(MESH_TAG, "Error in publishLoop");
+                        disconnectMqttSession(&mqttContext);
+                        mqtt_connection_status = EXIT_FAILURE;
+                    }
+                }
             }
         }
+        free(buffer);
         vTaskDelay(1000 / portTICK_PERIOD_MS);
     }
     vTaskDelete(NULL);
@@ -246,7 +265,8 @@ esp_err_t esp_tasks_runner(void) {
 
     s_route_table_lock = xSemaphoreCreateMutex();
 
-    mqtt_queues_t *mqtt_queues = (mqtt_queues_t *)malloc(sizeof(mqtt_queues_t));
+    mqtt_queues_t *mqtt_queues = (mqtt_queues_t *) malloc(sizeof(mqtt_queues_t));
+
     mqtt_queues->mqttPublisherQueue = xQueueCreate( queueSize, sizeof(mqtt_message_t) );
     mqtt_queues->mqttSuscriberQueue = xQueueCreate( queueSize, sizeof(mqtt_message_t) );
 
@@ -259,7 +279,7 @@ esp_err_t esp_tasks_runner(void) {
 
     if (!is_comm_mqtt_task_started)
     {
-        xTaskCreate(esp_mesh_mqtt_task_aws, "mqtt task-aws", 3072, (void *)mqtt_queues, 5, NULL);
+        xTaskCreate(esp_mesh_mqtt_task_aws, "mqtt task-aws", 7168, (void *)mqtt_queues, 5, NULL);
         xTaskCreate(esp_mesh_routing_table_task, "mqtt routing-table", 3072, NULL, 5, NULL);
         xTaskCreate(read_sensor_data, "Read sensor data from sensor", 3072, (void *)mqtt_queues, 5, NULL);
         // xTaskCreate(esp_mesh_task_mqtt_graph, "Graph logging task", 3072, NULL, 5, NULL);
