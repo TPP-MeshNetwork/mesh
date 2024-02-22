@@ -12,4 +12,4 @@ typedef struct {
 } mqtt_message_t;
 
 
-int queueSize = 5;
+int queueSize = 10;

@@ -18,9 +18,7 @@
 #include "driver/gpio.h"
 #include "freertos/semphr.h"
 #include <components/dht.h>
-#include "mqtt/aws_publish_utils.h"
-#include "mqtt/aws_initialize_utils.h"
-
+#include "mqtt/aws_mqtt.h"
 #include "mqtt_queue.h"
 #include "network_transport.h"
 
@@ -99,8 +97,8 @@ static void read_sensor_data(void *args) {
             sensor_data[1] = 50.0;
             ESP_LOGI(MESH_TAG, "%s: %.1fC\n", sensor_name[0], sensor_data[0]);
         } 
-        // else if (dht_read_float_data(SENSOR_TYPE, CONFIG_EXAMPLE_DATA_GPIO, sensor_data + 1, sensor_data) == ESP_OK)
-        //     ESP_LOGI(MESH_TAG, "%s: %.1fC\n", sensor_name[0], sensor_data[0]);
+        else if (dht_read_float_data(SENSOR_TYPE, CONFIG_EXAMPLE_DATA_GPIO, sensor_data + 1, sensor_data) == ESP_OK)
+            ESP_LOGI(MESH_TAG, "%s: %.1fC\n", sensor_name[0], sensor_data[0]);
         else {
             // stopping reading sensor if it fails too many times
             tries++;
@@ -231,6 +229,11 @@ void esp_mesh_mqtt_task_aws(void *args) {
 
     int mqtt_connection_status = start_mqtt_connection(&mqttContext, &xNetworkContext);
     while(1) {
+        uint32_t free_heap_size=0, min_free_heap_size=0;
+        free_heap_size = esp_get_free_heap_size();
+        min_free_heap_size = esp_get_minimum_free_heap_size(); 
+        printf("\n\n free heap size = %ld \t  min_free_heap_size = %ld \n\n",free_heap_size,min_free_heap_size); 
+
         while (mqtt_connection_status == EXIT_FAILURE) {
                 mqtt_connection_status = start_mqtt_connection(&mqttContext, &xNetworkContext);
                 vTaskDelay(1000 / portTICK_PERIOD_MS);
@@ -241,12 +244,13 @@ void esp_mesh_mqtt_task_aws(void *args) {
             // Handle allocation failure
             ESP_LOGE(MESH_TAG, "Failed to allocate memory for buffer");
         } else {
-            // memset(buffer, 0, sizeof(mqtt_message_t));
+
             if (mqtt_queues->mqttPublisherQueue!=NULL) {
                 if (xQueueReceive(mqtt_queues->mqttPublisherQueue, (void *) buffer, 0) == pdTRUE) {
                     ESP_LOGI(MESH_TAG, "Received message to publish: %s on topic: %s", buffer->message, buffer->topic);
+                    // int returnStatus = publishToTopic( &mqttContext, buffer->message, buffer->topic);
                     int returnStatus = publishLoop( &mqttContext, buffer->message, buffer->topic);
-                    if (returnStatus != pdPASS) {
+                    if (returnStatus != EXIT_SUCCESS) {
                         ESP_LOGI(MESH_TAG, "Error in publishLoop");
                         disconnectMqttSession(&mqttContext);
                         mqtt_connection_status = EXIT_FAILURE;
@@ -255,7 +259,7 @@ void esp_mesh_mqtt_task_aws(void *args) {
             }
         }
         free(buffer);
-        vTaskDelay(1000 / portTICK_PERIOD_MS);
+        vTaskDelay(2000 / portTICK_PERIOD_MS);
     }
     vTaskDelete(NULL);
 }
