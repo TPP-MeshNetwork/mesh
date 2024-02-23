@@ -248,8 +248,7 @@ void esp_mesh_mqtt_task_aws(void *args) {
             if (mqtt_queues->mqttPublisherQueue!=NULL) {
                 if (xQueueReceive(mqtt_queues->mqttPublisherQueue, (void *) buffer, 0) == pdTRUE) {
                     ESP_LOGI(MESH_TAG, "Received message to publish: %s on topic: %s", buffer->message, buffer->topic);
-                    // int returnStatus = publishToTopic( &mqttContext, buffer->message, buffer->topic);
-                    int returnStatus = publishLoop( &mqttContext, buffer->message, buffer->topic);
+                    int returnStatus = publishToTopic( &mqttContext, buffer->message, buffer->topic, MQTTQoS0);
                     if (returnStatus != EXIT_SUCCESS) {
                         ESP_LOGI(MESH_TAG, "Error in publishLoop");
                         disconnectMqttSession(&mqttContext);
