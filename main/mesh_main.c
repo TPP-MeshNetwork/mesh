@@ -85,7 +85,7 @@ static void read_sensor_data(void *args) {
     int tries = 0;
 
     const char *sensor_name[2] = {"temperature", "humidity"};
-    const char *sensor_topic[2] = {"/topic/temperature", "/topic/humidity"};
+    const char *sensor_topic[2] = {"topic_temperature", "topic_humidity"};
     size_t sensor_length = sizeof(sensor_name) / sizeof(sensor_name[0]);
     float sensor_data[sensor_length];
 
@@ -97,9 +97,9 @@ static void read_sensor_data(void *args) {
             sensor_data[1] = 50.0;
             ESP_LOGI(MESH_TAG, "%s: %.1fC\n", sensor_name[0], sensor_data[0]);
         } 
-        else if (dht_read_float_data(SENSOR_TYPE, CONFIG_EXAMPLE_DATA_GPIO, sensor_data + 1, sensor_data) == ESP_OK)
+        else if (dht_read_float_data(SENSOR_TYPE, CONFIG_EXAMPLE_DATA_GPIO, sensor_data + 1, sensor_data) == ESP_OK) {
             ESP_LOGI(MESH_TAG, "%s: %.1fC\n", sensor_name[0], sensor_data[0]);
-        else {
+        } else {
             // stopping reading sensor if it fails too many times
             tries++;
             if (tries > max_tries)
@@ -111,7 +111,7 @@ static void read_sensor_data(void *args) {
 
         for (size_t i = 0; i < sensor_length; i++) {
             // TODO: DEFINIR MENSAJES A ENVIAR!! MESH TAG NO SIRVE
-            asprintf(&sensor_print, "{'factoryTag': '%s', '%s': %.1f}", MESH_TAG, sensor_name[i], sensor_data[i]);
+            asprintf(&sensor_print, "{\"factory_tag\": \"%s\", \"%s\": %.1f}", MESH_TAG, sensor_name[i], sensor_data[i]);
             ESP_LOGI(MESH_TAG, "Trying to queue message: %s", sensor_print);
             if (mqtt_queues->mqttPublisherQueue != NULL) {
                 publish(mqtt_queues->mqttPublisherQueue, (char*)sensor_topic[i], sensor_print);
