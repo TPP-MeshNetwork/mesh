@@ -494,7 +494,7 @@ static int unsubscribeFromTopic( MQTTContext_t * pMqttContext );
  * @return EXIT_SUCCESS if PUBLISH was successfully sent;
  * EXIT_FAILURE otherwise.
  */
-int publishToTopic( MQTTContext_t * pMqttContext, char * message, char *topic);
+int publishToTopic( MQTTContext_t * pMqttContext, char * message, char *topic, MQTTQoS_t qos);
 
 /**
  * @brief Function to get the free index at which an outgoing publish
@@ -1323,8 +1323,7 @@ static int unsubscribeFromTopic( MQTTContext_t * pMqttContext )
 
 /*-----------------------------------------------------------*/
 
-int publishToTopic( MQTTContext_t * pMqttContext, char * message, char *topic )
-{
+int publishToTopic( MQTTContext_t * pMqttContext, char * message, char *topic, MQTTQoS_t qos ) {
     int returnStatus = EXIT_SUCCESS;
     MQTTStatus_t mqttStatus = MQTTSuccess;
     uint8_t publishIndex = MAX_OUTGOING_PUBLISHES;
@@ -1343,8 +1342,8 @@ int publishToTopic( MQTTContext_t * pMqttContext, char * message, char *topic )
     }
     else
     {
-        /* This example publishes to only one topic and uses QOS1. */
-        outgoingPublishPackets[ publishIndex ].pubInfo.qos = MQTTQoS1;
+        /* This example publishes to only one topic and uses qos */
+        outgoingPublishPackets[ publishIndex ].pubInfo.qos = qos;
         outgoingPublishPackets[ publishIndex ].pubInfo.pTopicName = topic;
         outgoingPublishPackets[ publishIndex ].pubInfo.topicNameLength = ( uint16_t ) strlen( topic );
         outgoingPublishPackets[ publishIndex ].pubInfo.pPayload = message;
@@ -1372,6 +1371,10 @@ int publishToTopic( MQTTContext_t * pMqttContext, char * message, char *topic )
                        outgoingPublishPackets[ publishIndex ].pubInfo.pTopicName,
                        outgoingPublishPackets[ publishIndex ].packetId ) );
         }
+    }
+
+    if(qos == MQTTQoS0) {
+        cleanupOutgoingPublishAt( publishIndex );
     }
 
     return returnStatus;
@@ -1432,7 +1435,8 @@ static int initializeMqtt( MQTTContext_t * pMqttContext,
 }
 
 /*-----------------------------------------------------------*/
-
+// Publish loop is used to receive the ack when using QOS1
+//
 int publishLoop( MQTTContext_t * pMqttContext, char * message, char *topic) {
     int returnStatus = EXIT_SUCCESS;
     MQTTStatus_t mqttStatus = MQTTSuccess;
@@ -1448,9 +1452,9 @@ int publishLoop( MQTTContext_t * pMqttContext, char * message, char *topic) {
         for( publishCount = 0; publishCount < maxPublishCount; publishCount++ )
         {
             LogInfo( ( "Sending Publish to the MQTT topic %.*s.",
-                       MQTT_EXAMPLE_TOPIC_LENGTH,
-                       MQTT_EXAMPLE_TOPIC ) );
-            returnStatus = publishToTopic( pMqttContext, message, topic);
+                       strlen(topic),
+                       topic ) );
+            returnStatus = publishToTopic( pMqttContext, message, topic, MQTTQoS1);
 
             /* Calling MQTT_ProcessLoop to process incoming publish echo, since
              * application subscribed to the same topic the broker will send

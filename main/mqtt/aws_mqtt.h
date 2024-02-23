@@ -22,6 +22,6 @@ int disconnectMqttSession( MQTTContext_t * pMqttContext );
  * @return EXIT_SUCCESS if PUBLISH was successfully sent;
  * EXIT_FAILURE otherwise.
  */
-int publishToTopic( MQTTContext_t * pMqttContext, char * message, char *topic);
+int publishToTopic( MQTTContext_t * pMqttContext, char * message, char *topic, MQTTQoS_t qos );
 
 int publishLoop( MQTTContext_t * pMqttContext, char * message, char *topic);
