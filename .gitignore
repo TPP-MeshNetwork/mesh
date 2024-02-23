@@ -7,9 +7,6 @@
 # cache dir
 .cache/
 
-# VS Code Settings
-.vscode/
-
 # ESP-IDF default build directory name
 build
 build_esp*_*/
@@ -22,6 +19,6 @@ partitions.csv
 *.o
 *.pyc
 
-main/secret.h
-
 main/certs/*
+main/certs/client.crt
+main/certs/client.key

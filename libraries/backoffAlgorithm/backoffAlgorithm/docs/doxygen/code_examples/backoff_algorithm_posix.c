@@ -74,7 +74,7 @@ int main()
 
             /* Wait for the calculated backoff period before the next retry attempt of querying DNS.
              * As usleep() takes nanoseconds as the parameter, we multiply the backoff period by 1000. */
-            ( void ) usleep( nextRetryBackoff * 1000U );
+            ( void ) Clock_SleepMs( nextRetryBackoff );
         }
     } while( ( dnsStatus != 0 ) && ( retryStatus != BackoffAlgorithmRetriesExhausted ) );
 
