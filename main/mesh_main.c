@@ -77,15 +77,52 @@ void static recv_cb(mesh_addr_t *from, mesh_data_t *data) {
     }
 }
 
+void log_perfdata() {
+    uint32_t free_heap_size=0, min_free_heap_size=0;
+    free_heap_size = esp_get_free_heap_size();
+    min_free_heap_size = esp_get_minimum_free_heap_size(); 
+    printf("\n\n free heap size = %ld \t  min_free_heap_size = %ld \n\n",free_heap_size,min_free_heap_size); 
+}
 
-static void read_sensor_data(void *args) {
+char * create_topic(char* topic_type, char* topic_suffix) {
+    if (topic_type == NULL || topic_suffix == NULL) {
+        ESP_LOGE(MESH_TAG, "Error in create_topic: topic_type or topic_suffix is NULL");
+        return NULL;
+    }
+    uint8_t macAp[6];
+    esp_wifi_get_mac(WIFI_IF_AP, macAp);
+    char *topic;
+    asprintf(&topic, "/mesh/%s/device/" MACSTR "/%s/%s", MESH_TAG, MAC2STR(macAp), topic_type, topic_suffix);
+    return topic;
+
+}
+
+char * create_message(char* message) {
+    if (message == NULL) {
+        ESP_LOGE(MESH_TAG, "Error in create_message message is NULL");
+        return NULL;
+    }
+    uint8_t macAp[6];
+    esp_wifi_get_mac(WIFI_IF_AP, macAp);
+    char * new_message;
+    asprintf(&new_message, "{\"mesh_id\": \"%s\", \"device_id\": \"" MACSTR "\" \"data\": %s }", MESH_TAG, MAC2STR(macAp), message);
+    return new_message;
+}
+
+void task_read_sensor_dh11(void *args) {
+    ESP_LOGI(MESH_TAG, "STARTED: task_read_sensor_dh11");
     mqtt_queues_t *mqtt_queues = (mqtt_queues_t *) args;
-    char *sensor_print;
+    char *sensor_message;
     const int max_tries = 10;
     int tries = 0;
 
     const char *sensor_name[2] = {"temperature", "humidity"};
-    const char *sensor_topic[2] = {"topic_temperature", "topic_humidity"};
+
+    char * sensor_topic[2] = {
+        create_topic("sensor", "temperature"),
+        create_topic("sensor", "humidity")
+    };
+
     size_t sensor_length = sizeof(sensor_name) / sizeof(sensor_name[0]);
     float sensor_data[sensor_length];
 
@@ -110,22 +147,28 @@ static void read_sensor_data(void *args) {
         }
 
         for (size_t i = 0; i < sensor_length; i++) {
-            // TODO: DEFINIR MENSAJES A ENVIAR!! MESH TAG NO SIRVE
-            asprintf(&sensor_print, "{\"factory_tag\": \"%s\", \"%s\": %.1f}", MESH_TAG, sensor_name[i], sensor_data[i]);
-            ESP_LOGI(MESH_TAG, "Trying to queue message: %s", sensor_print);
+
+            asprintf(&sensor_message, "\"%s\": %.1f}", sensor_name[i], sensor_data[i]);
+            char * message = create_message(sensor_message);
+
+            ESP_LOGI(MESH_TAG, "Trying to queue message: %s", message);
             if (mqtt_queues->mqttPublisherQueue != NULL) {
-                publish(mqtt_queues->mqttPublisherQueue, (char*)sensor_topic[i], sensor_print);
-                ESP_LOGI(MESH_TAG, "queued done: %s", sensor_print);
+                publish(mqtt_queues->mqttPublisherQueue, sensor_topic[i], message);
+                ESP_LOGI(MESH_TAG, "queued done: %s", message);
             }
-            free(sensor_print);
+            free(message);
+            free(sensor_message);
         }
 
-        vTaskDelay(pdMS_TO_TICKS(2000));
+        vTaskDelay(pdMS_TO_TICKS(5000));
     }
+    free(sensor_topic[0]);
+    free(sensor_topic[1]);
     vTaskDelete(NULL);
 }
 
-void esp_mesh_routing_table_task(void *arg) {
+void task_mesh_table_routing(void *args) {
+    ESP_LOGI(MESH_TAG, "STARTED: task_mesh_table_routing");
     is_running = true;
     mesh_data_t data;
     esp_err_t err;
@@ -149,42 +192,54 @@ void esp_mesh_routing_table_task(void *arg) {
     vTaskDelete(NULL);
 }
 
-// void esp_mesh_task_mqtt_graph(void *arg)
-// {
-//     is_running = true;
-//     char *print;
-//     // get the parent of this node
-//     mesh_addr_t parent;
-//     esp_mesh_get_parent_bssid(&parent);
+void task_mqtt_graph(void *args) {
+    ESP_LOGI(MESH_TAG, "STARTED: task_mqtt_graph");
 
-//     // mac addr STA of this node to string
-//     uint8_t macSta[6];
-//     esp_wifi_get_mac(WIFI_IF_STA, macSta);
+    is_running = true;
+    char * graph_message;
+    mqtt_queues_t *mqtt_queues = (mqtt_queues_t *) args;
+    // get the parent of this node
+    mesh_addr_t parent;
+    esp_mesh_get_parent_bssid(&parent);
 
-//     // mac addr AP of this node to string
-//     uint8_t macAp[6];
-//     esp_wifi_get_mac(WIFI_IF_AP, macAp);
+    // mac addr STA of this node to string
+    uint8_t macSta[6];
+    esp_wifi_get_mac(WIFI_IF_STA, macSta);
 
-//     while (is_running)
-//     {
-//         if (esp_mesh_is_root())
-//         {
-//             // the root node has no parent so instead we get the WIFI_IF_AP -> WIFI_IF_STA
-//             asprintf(&print, "{'layer': %d, 'root': true, 'macSta': '" MACSTR "', 'macSoftap': '" MACSTR "'}", esp_mesh_get_layer(), MAC2STR(macSta), MAC2STR(macAp));
-//         }
-//         else
-//         {
-//             asprintf(&print, "{'layer': %d, 'root': false, 'macSta': '" MACSTR "', 'macSoftap': '" MACSTR "'}", esp_mesh_get_layer(), MAC2STR(parent.addr), MAC2STR(macAp));
-//         }
+    // mac addr AP of this node to string
+    uint8_t macAp[6];
+    esp_wifi_get_mac(WIFI_IF_AP, macAp);
 
-//         ESP_LOGI(MESH_TAG, "Tried to publish topic: graph %s", print);
-//         mqtt_app_publish("/topic/graph", MESH_TAG, print);
-//         free(print);
+    char * topic = create_topic("graph", "report");
 
-//         vTaskDelay(2 * 2000 / portTICK_PERIOD_MS);
-//     }
-//     vTaskDelete(NULL);
-// }
+    while (is_running)
+    {
+        log_perfdata(); // for debugging memory leaks
+
+        if (esp_mesh_is_root())
+        {
+            // the root node has no parent so instead we get the WIFI_IF_AP -> WIFI_IF_STA
+            asprintf(&graph_message, "{'layer': %d, 'root': true, 'macSta': '" MACSTR "', 'macSoftap': '" MACSTR "'}", esp_mesh_get_layer(), MAC2STR(macSta), MAC2STR(macAp));
+        }
+        else
+        {
+            asprintf(&graph_message, "{'layer': %d, 'root': false, 'macSta': '" MACSTR "', 'macSoftap': '" MACSTR "'}", esp_mesh_get_layer(), MAC2STR(parent.addr), MAC2STR(macAp));
+        }
+
+        char * message = create_message(graph_message);
+
+        ESP_LOGI(MESH_TAG, "Trying to queue message: %s", message);
+        if (mqtt_queues->mqttPublisherQueue != NULL) {
+            publish(mqtt_queues->mqttPublisherQueue, topic, message);
+            ESP_LOGI(MESH_TAG, "queued done: %s", message);
+        }
+        free(graph_message);
+        free(message);
+        vTaskDelay(pdMS_TO_TICKS(2000));
+    }
+    free(topic);
+    vTaskDelete(NULL);
+}
 
 // void esp_mesh_task_mqtt_keepalive(void *arg)
 // {
@@ -218,21 +273,17 @@ void esp_mesh_routing_table_task(void *arg) {
 // }
 
 
-void esp_mesh_mqtt_task_aws(void *args) {
+void task_mqtt_client_start(void *args) {
     // read mqtt queues from arg
     mqtt_queues_t *mqtt_queues = (mqtt_queues_t *) args;
 
     MQTTContext_t mqttContext = { 0 };
     NetworkContext_t xNetworkContext = { 0 };
 
-    ESP_LOGI(MESH_TAG, "esp_mesh_mqtt_task_aws");
+    ESP_LOGI(MESH_TAG, "STARTED: task_mqtt_client_start");
 
     int mqtt_connection_status = start_mqtt_connection(&mqttContext, &xNetworkContext);
     while(1) {
-        uint32_t free_heap_size=0, min_free_heap_size=0;
-        free_heap_size = esp_get_free_heap_size();
-        min_free_heap_size = esp_get_minimum_free_heap_size(); 
-        printf("\n\n free heap size = %ld \t  min_free_heap_size = %ld \n\n",free_heap_size,min_free_heap_size); 
 
         while (mqtt_connection_status == EXIT_FAILURE) {
                 mqtt_connection_status = start_mqtt_connection(&mqttContext, &xNetworkContext);
@@ -282,10 +333,10 @@ esp_err_t esp_tasks_runner(void) {
 
     if (!is_comm_mqtt_task_started)
     {
-        xTaskCreate(esp_mesh_mqtt_task_aws, "mqtt task-aws", 7168, (void *)mqtt_queues, 5, NULL);
-        xTaskCreate(esp_mesh_routing_table_task, "mqtt routing-table", 3072, NULL, 5, NULL);
-        xTaskCreate(read_sensor_data, "Read sensor data from sensor", 3072, (void *)mqtt_queues, 5, NULL);
-        // xTaskCreate(esp_mesh_task_mqtt_graph, "Graph logging task", 3072, NULL, 5, NULL);
+        xTaskCreate(task_mqtt_client_start, "mqtt task-aws", 7168, (void *)mqtt_queues, 5, NULL);
+        xTaskCreate(task_mesh_table_routing, "mqtt routing-table", 3072, NULL, 5, NULL);
+        xTaskCreate(task_read_sensor_dh11, "Read sensor data from sensor", 3072, (void *)mqtt_queues, 5, NULL);
+        xTaskCreate(task_mqtt_graph, "Graph logging task", 3072, (void *)mqtt_queues, 5, NULL);
         // xTaskCreate(esp_mesh_task_mqtt_keepalive, "Keepalive task", 3072, NULL, 5, NULL);
         is_comm_mqtt_task_started = true;
     }
