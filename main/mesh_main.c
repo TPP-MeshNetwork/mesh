@@ -105,7 +105,7 @@ char * create_message(char* message) {
     uint8_t macAp[6];
     esp_wifi_get_mac(WIFI_IF_AP, macAp);
     char * new_message;
-    asprintf(&new_message, "{\"mesh_id\": \"%s\", \"device_id\": \"" MACSTR "\" \"data\": %s }", MESH_TAG, MAC2STR(macAp), message);
+    asprintf(&new_message, "{\"mesh_id\": \"%s\", \"device_id\": \"" MACSTR "\", \"data\": %s }", MESH_TAG, MAC2STR(macAp), message);
     return new_message;
 }
 
@@ -148,7 +148,7 @@ void task_read_sensor_dh11(void *args) {
 
         for (size_t i = 0; i < sensor_length; i++) {
 
-            asprintf(&sensor_message, "\"%s\": %.1f}", sensor_name[i], sensor_data[i]);
+            asprintf(&sensor_message, "{ \"%s\": %.1f }", sensor_name[i], sensor_data[i]);
             char * message = create_message(sensor_message);
 
             ESP_LOGI(MESH_TAG, "Trying to queue message: %s", message);
