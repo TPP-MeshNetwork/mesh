@@ -21,7 +21,7 @@
 #include "mqtt/aws_mqtt.h"
 #include "mqtt_queue.h"
 #include "network_transport.h"
-
+#include "esp_netif_sntp.h"
 
 /*******************************************************
  *                Macros
@@ -102,10 +102,15 @@ char * create_message(char* message) {
         ESP_LOGE(MESH_TAG, "Error in create_message message is NULL");
         return NULL;
     }
+
+    // get the timestamp for the message in epoch
+    time_t now;
+    time(&now);
+
     uint8_t macAp[6];
     esp_wifi_get_mac(WIFI_IF_AP, macAp);
     char * new_message;
-    asprintf(&new_message, "{\"mesh_id\": \"%s\", \"device_id\": \"" MACSTR "\", \"data\": %s }", MESH_TAG, MAC2STR(macAp), message);
+    asprintf(&new_message, "{\"mesh_id\": \"%s\", \"device_id\": \"" MACSTR "\", \"timestamp\": %lld, %s }", MESH_TAG, MAC2STR(macAp), now, message);
     return new_message;
 }
 
@@ -148,7 +153,7 @@ void task_read_sensor_dh11(void *args) {
 
         for (size_t i = 0; i < sensor_length; i++) {
 
-            asprintf(&sensor_message, "{ \"%s\": %.1f }", sensor_name[i], sensor_data[i]);
+            asprintf(&sensor_message, " \"sensor_type\": \"%s\", \"sensor_value\": %.1f ", sensor_name[i], sensor_data[i]);
             char * message = create_message(sensor_message);
 
             ESP_LOGI(MESH_TAG, "Trying to queue message: %s", message);
@@ -219,11 +224,11 @@ void task_mqtt_graph(void *args) {
         if (esp_mesh_is_root())
         {
             // the root node has no parent so instead we get the WIFI_IF_AP -> WIFI_IF_STA
-            asprintf(&graph_message, "{'layer': %d, 'root': true, 'macSta': '" MACSTR "', 'macSoftap': '" MACSTR "'}", esp_mesh_get_layer(), MAC2STR(macSta), MAC2STR(macAp));
+            asprintf(&graph_message, "'layer': %d, 'root': true, 'macSta': '" MACSTR "', 'macSoftap': '" MACSTR "'", esp_mesh_get_layer(), MAC2STR(macSta), MAC2STR(macAp));
         }
         else
         {
-            asprintf(&graph_message, "{'layer': %d, 'root': false, 'macSta': '" MACSTR "', 'macSoftap': '" MACSTR "'}", esp_mesh_get_layer(), MAC2STR(parent.addr), MAC2STR(macAp));
+            asprintf(&graph_message, "'layer': %d, 'root': false, 'macSta': '" MACSTR "', 'macSoftap': '" MACSTR "'", esp_mesh_get_layer(), MAC2STR(parent.addr), MAC2STR(macAp));
         }
 
         char * message = create_message(graph_message);
@@ -557,6 +562,13 @@ void ip_event_handler(void *arg, esp_event_base_t event_base,
     ESP_ERROR_CHECK(esp_netif_get_dns_info(netif, ESP_NETIF_DNS_MAIN, &dns));
     mesh_netif_start_root_ap(esp_mesh_is_root(), dns.ip.u_addr.ip4.addr);
 #endif
+
+    /* Before running the tasks we should try to sync with NTP*/
+    esp_sntp_config_t config = ESP_NETIF_SNTP_DEFAULT_CONFIG("pool.ntp.org");
+    esp_netif_sntp_init(&config);
+    if (esp_netif_sntp_sync_wait(pdMS_TO_TICKS(10000)) != ESP_OK) {
+        printf("Failed to update system time within 10s timeout");
+    }
     esp_tasks_runner();
 }
 

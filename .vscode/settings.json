@@ -9,6 +9,7 @@
     "aws_publish_utils.h": "c",
     "aws_variables.h": "c",
     "aws_initialize_utils.h": "c",
-    "dht.h": "c"
+    "dht.h": "c",
+    "esp_sntp.h": "c"
   }
 }
