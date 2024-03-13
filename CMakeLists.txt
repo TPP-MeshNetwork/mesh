@@ -12,9 +12,12 @@ set(EXTRA_COMPONENT_DIRS ${espidflib_SOURCE_DIR}/components
              "${CMAKE_CURRENT_LIST_DIR}/libraries/backoffAlgorithm"
 						 "${CMAKE_CURRENT_LIST_DIR}/libraries/coreMQTT"
 						 "${CMAKE_CURRENT_LIST_DIR}/libraries/common/posix_compat"
+						 "${CMAKE_CURRENT_LIST_DIR}/libraries/button"
+						 "${CMAKE_CURRENT_LIST_DIR}/libraries/ws2812_led"
              "$ENV{IDF_PATH}/examples/common_components/protocol_examples_common"
 						 "${CMAKE_CURRENT_LIST_DIR}/libraries/common/logging"
 						 "${CMAKE_CURRENT_LIST_DIR}/main/mqtt"
+						 "${CMAKE_CURRENT_LIST_DIR}/main/network_manager"
              "${CMAKE_CURRENT_LIST_DIR}/main/components"
   )
 
