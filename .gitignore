@@ -22,3 +22,7 @@ partitions.csv
 main/certs/*
 main/certs/client.crt
 main/certs/client.key
+main/certificates
+
+# VSCode
+.vscode/*
