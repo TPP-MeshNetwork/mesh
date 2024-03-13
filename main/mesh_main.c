@@ -22,6 +22,8 @@
 #include "mqtt_queue.h"
 #include "network_transport.h"
 #include "esp_netif_sntp.h"
+#include <freertos/FreeRTOS.h>
+#include "esp_system.h"
 
 /*******************************************************
  *                Macros
@@ -33,9 +35,11 @@
 /*******************************************************
  *                Constants
  *******************************************************/
+#define RST_BTN 13
 #define MESH_ID_SIZE 6
 static const char *MESH_TAG = "mesh_main";
 static const uint8_t MESH_ID[MESH_ID_SIZE] = {0x77, 0x77, 0x77, 0x77, 0x77, 0x76};
+
 
 /*******************************************************
  *                Variable Definitions for Mesh
@@ -48,6 +52,10 @@ static mesh_addr_t s_route_table[CONFIG_MESH_ROUTE_TABLE_SIZE];
 static int s_route_table_size = 0;
 static SemaphoreHandle_t s_route_table_lock = NULL;
 static uint8_t s_mesh_tx_payload[CONFIG_MESH_ROUTE_TABLE_SIZE * 6 + 1];
+/*For button pressing*/
+static TickType_t ticks_from_start = 0;
+static unsigned long int last_time = 0;
+static unsigned long int last_change = 0;
 
 
 void publish(QueueHandle_t publishQueue, const char * topic, const char * message) {
@@ -572,7 +580,7 @@ void ip_event_handler(void *arg, esp_event_base_t event_base,
     esp_tasks_runner();
 }
 
-void app_main(void) {
+void app_main2(void) {
     ESP_ERROR_CHECK(nvs_flash_init());
     /*  tcpip initialization */
     ESP_ERROR_CHECK(esp_netif_init());
@@ -614,4 +622,119 @@ void app_main(void) {
     ESP_ERROR_CHECK(esp_mesh_start());
     ESP_LOGI(MESH_TAG, "mesh starts successfully, heap:%" PRId32 ", %s", esp_get_free_heap_size(),
              esp_mesh_is_root_fixed() ? "root fixed" : "root not fixed");
+}
+
+
+void push_handler(void *arg) {
+    bool pressed = !(bool) gpio_get_level(RST_BTN);
+    unsigned long int now = xTaskGetTickCount()/configTICK_RATE_HZ;
+    if (!pressed) {
+        // The button has been released, I must check when was the last interrupt
+        if (now - last_time > 5 || last_time == 0 || now < last_time) {
+            // The button was pressed for more than 5 seconds
+            esp_restart();
+        }        
+    }
+    if (abs(now - last_change) < 1) {
+        // The button was pressed for less than 1 second
+        return;
+    }
+    last_time = now;
+}
+
+
+esp_err_t init_irs(void) {
+    gpio_config_t pGPIOCconfig;
+    
+    pGPIOCconfig.pin_bit_mask = (1ULL << RST_BTN);
+    pGPIOCconfig.mode = GPIO_MODE_INPUT;
+    pGPIOCconfig.pull_up_en = GPIO_PULLUP_ENABLE;
+    pGPIOCconfig.pull_down_en = GPIO_PULLDOWN_DISABLE;
+    pGPIOCconfig.intr_type = GPIO_INTR_ANYEDGE;
+
+    gpio_config(&pGPIOCconfig);
+
+    gpio_install_isr_service(0);
+    gpio_isr_handler_add(RST_BTN, push_handler, (void*) false);
+
+    // Release
+    //gpio_set_intr_type(RST_BTN, GPIO_INTR_POSEDGE);
+    //gpio_isr_handler_add(RST_BTN, push_handler, (void*) true);
+
+    return ESP_OK;
+}
+
+
+void app_main(void) {
+    ESP_LOGI(MESH_TAG, "Iniciando el main");
+    init_irs();
+    nvs_handle_t my_handle;
+    esp_err_t err = nvs_flash_init();
+    bool available_nvs = false;
+
+    if (err == ESP_ERR_NVS_NO_FREE_PAGES || err == ESP_ERR_NVS_NEW_VERSION_FOUND) {
+        ESP_LOGI(MESH_TAG, "Error en la flash");
+        ESP_ERROR_CHECK(nvs_flash_erase());
+        err = nvs_flash_init();
+    }
+
+    size_t ssid_size = 32;
+    char* ssid = malloc(ssid_size);
+
+    err = nvs_open("storage", NVS_READWRITE, &my_handle);
+    if (err != ESP_OK) {
+        ESP_LOGE(MESH_TAG, "Error (%s) opening NVS handle", esp_err_to_name(err));
+        available_nvs = true;
+    } else {
+        ESP_LOGI(MESH_TAG, "NVS handle abierto");
+
+        
+
+        err = nvs_get_str(my_handle, "wifi_ssid", ssid, &ssid_size);
+
+        switch (err) {
+            case ESP_OK:
+                ESP_LOGI(MESH_TAG, "encontramos SSID: %s", ssid);
+                break;
+            case ESP_ERR_NVS_NOT_FOUND:
+                ESP_LOGI(MESH_TAG, "No encontramos el SSID");
+                //ESP_LOGIC(MESH_TAG, "GUARDO AHORA UN VALOR");
+                //nvs_set_str(my_handle, "wifi_ssid", "SSID_DE_PRUEBA_GATO");
+                break;
+        }
+
+        //nvs_close(my_handle);
+    }
+
+    //size_t ssid_size = 32;
+    //char* ssid = malloc(ssid_size);
+    //nvs_get_str("wifi_ssid")
+    int count = 0;
+    while (1) {
+        ESP_LOGI(MESH_TAG, "En el loop numero %d", count);
+        ticks_from_start = xTaskGetTickCount();
+
+        ESP_LOGI(MESH_TAG, "Tiempo desde que empezo: %ld", ticks_from_start/configTICK_RATE_HZ);
+        vTaskDelay(5000/portTICK_PERIOD_MS);
+        count++;
+
+        if (count == 8) {
+            err = nvs_get_str(my_handle, "wifi_ssid", ssid, &ssid_size);
+            switch (err) {
+                case ESP_OK:
+                    ESP_LOGI(MESH_TAG, "encontramos SSID: %s", ssid);
+                    ESP_LOGI(MESH_TAG, "Lo borramos");
+                    nvs_erase_all(my_handle);
+                    break;
+                case ESP_ERR_NVS_NOT_FOUND:
+                    ESP_LOGI(MESH_TAG, "No encontramos el SSID");
+                    ESP_LOGI(MESH_TAG, "GUARDO AHORA UN VALOR");
+                    nvs_set_str(my_handle, "wifi_ssid", "SSID_DE_PRUEBA_GATO");
+                    break;
+                default:
+                    ESP_LOGI(MESH_TAG, "No se que paso"); 
+            }
+        }
+
+    }
 }
