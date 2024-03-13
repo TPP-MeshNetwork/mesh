@@ -114,7 +114,7 @@ char * create_message(char* message) {
     uint8_t macAp[6];
     esp_wifi_get_mac(WIFI_IF_AP, macAp);
     char * new_message;
-    asprintf(&new_message, "{\"mesh_id\": \"%s\", \"device_id\": \"" MACSTR "\", \"timestamp\": %lld, %s }", MESH_TAG, MAC2STR(macAp), now, message);
+    asprintf(&new_message, "{\"mesh_id\": \"%s\", \"device_id\": \"" MACSTR "\", \"timestamp_value\": %lld, %s }", MESH_TAG, MAC2STR(macAp), now, message);
     return new_message;
 }
 
