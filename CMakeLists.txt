@@ -14,6 +14,7 @@ set(EXTRA_COMPONENT_DIRS ${espidflib_SOURCE_DIR}/components
 						 "${CMAKE_CURRENT_LIST_DIR}/libraries/common/posix_compat"
 						 "${CMAKE_CURRENT_LIST_DIR}/libraries/button"
 						 "${CMAKE_CURRENT_LIST_DIR}/libraries/ws2812_led"
+						 "${CMAKE_CURRENT_LIST_DIR}/libraries/qrcode"
              "$ENV{IDF_PATH}/examples/common_components/protocol_examples_common"
 						 "${CMAKE_CURRENT_LIST_DIR}/libraries/common/logging"
 						 "${CMAKE_CURRENT_LIST_DIR}/main/mqtt"
