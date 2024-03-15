@@ -168,7 +168,8 @@ esp_err_t app_wifi_init(void)
 
     /* Initialize Wi-Fi and netif with default config */
 #ifdef ESP_NETIF_SUPPORTED
-    esp_netif_create_default_wifi_sta();
+    esp_netif_create_default_wifi_ap();
+    //esp_netif_create_default_wifi_sta();
 #endif
     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
     ESP_ERROR_CHECK(esp_wifi_init(&cfg));
