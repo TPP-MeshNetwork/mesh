@@ -1,0 +1,63 @@
+<html>
+  <head>
+    <title>Provisioning Form</title>
+    <style>
+      body {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        font-family: Arial, sans-serif;
+        background-color: green;
+      }
+      h2 {
+        color: #333;
+        align-items: center;
+      }
+      .ssid-list {
+        display: flex;
+        gap: 1em;
+      }
+      .form {
+        padding-top: 2em;
+      }
+      form {
+        max-width: 300px;
+        margin: 0 auto;
+      }
+      input[type="text"],
+      input[type="password"] {
+        width: 100%;
+        padding: 10px;
+        margin: 5px 0;
+      }
+      input[type="submit"] {
+        width: 100%;
+        padding: 10px;
+        background-color: #4caf50;
+        color: white;
+        border: none;
+      }
+      input[type="submit"]:hover {
+        background-color: #45a049;
+      }
+    </style>
+  </head>
+  <body>
+    <h2>Provisioning Form</h2>
+    <form class="form" action="/submit" method="post">
+      <div class="ssid-list">
+        <label for="wifi_ssid">Wi-Fi Network:</label>
+        <select id="wifi_ssid" name="wifi_ssid">
+          <option value="%s">cuevita</option>
+          <option value="%s">cuevita5</option>
+          <option value="%s">Personal Wifi Zon</option>
+        </select>
+        <button type="button" onclick="reloadAPs()"><span>↻</span></button>
+      </div>
+      <div class="form">Password: <input type="password" name="wifi_password" /><br /></div>
+      <div class="form">Mesh Name: <input type="text" name="mesh_name" /><br /></div>
+      <div class="form"></siv>Email: <input type="text" name="email" /><br /></div>
+      <input type="submit" value="Submit" />
+    </form>
+  </body>
+</html>

@@ -1,12 +1,3 @@
-/* App Wifi
-
-   This example code is in the Public Domain (or CC0 licensed, at your option.)
-
-   Unless required by applicable law or agreed to in writing, this
-   software is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
-   CONDITIONS OF ANY KIND, either express or implied.
-*/
-
 #include <stdio.h>
 #include <string.h>
 #include <esp_log.h>
@@ -15,30 +6,13 @@
 #include <freertos/event_groups.h>
 #include <esp_wifi.h>
 #include <esp_event.h>
+#include "cJSON.h"
 
 #include <esp_idf_version.h>
-#if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(4, 1, 0)
-// Features supported in 4.1+
-#define ESP_NETIF_SUPPORTED
-#endif
-
-#ifdef ESP_NETIF_SUPPORTED
 #include <esp_netif.h>
-#else
-#include <tcpip_adapter.h>
-#endif
-#include <wifi_provisioning/manager.h>
-#include <wifi_provisioning/scheme_ble.h>
-#include <wifi_provisioning/scheme_softap.h>
+#include <esp_http_server.h>
 
-#include <qrcode.h>
-#include "esp_http_server.h"
-
-#define SERV_NAME_PREFIX "PROV_"
-#define PROV_QR_VERSION "v1"
 #define PROV_TRANSPORT_SOFTAP "softap"
-#define PROV_TRANSPORT_BLE "ble"
-#define QRCODE_BASE_URL "https://espressif.github.io/esp-jumpstart/qrcode.html"
 
 static const char *TAG = "app_wifi";
 
@@ -46,67 +20,11 @@ static const char *TAG = "app_wifi";
 const int WIFI_CONNECTED_EVENT = BIT0;
 static EventGroupHandle_t wifi_event_group;
 
-static void print_qr(const char *name, const char *pop, const char *transport)
+typedef struct
 {
-    if (!name || !transport)
-    {
-        ESP_LOGW(TAG, "Cannot generate QR code payload. Data missing.");
-        return;
-    }
-    char payload[150] = {0};
-    if (pop)
-    {
-        snprintf(payload, sizeof(payload), "{\"ver\":\"%s\",\"name\":\"%s\""
-                                           ",\"pop\":\"%s\",\"transport\":\"%s\"}",
-                 PROV_QR_VERSION, name, pop, transport);
-    }
-    else
-    {
-        snprintf(payload, sizeof(payload), "{\"ver\":\"%s\",\"name\":\"%s\""
-                                           ",\"transport\":\"%s\"}",
-                 PROV_QR_VERSION, name, transport);
-    }
-    ESP_LOGI(TAG, "Scan this QR code from the provisioning application for Provisioning.");
-    esp_qrcode_config_t cfg = ESP_QRCODE_CONFIG_DEFAULT();
-    esp_qrcode_generate(&cfg, payload);
-    ESP_LOGI(TAG, "If QR code is not visible, copy paste the below URL in a browser.\n%s?data=%s", QRCODE_BASE_URL, payload);
-}
-
-static void provisioning_event_handler(void *arg, esp_event_base_t event_base, int32_t event_id, void *event_data)
-{
-    switch (event_id)
-    {
-    case WIFI_PROV_START:
-        ESP_LOGI(TAG, "Provisioning started");
-        break;
-    case WIFI_PROV_CRED_RECV:
-    {
-        wifi_sta_config_t *wifi_sta_cfg = (wifi_sta_config_t *)event_data;
-        ESP_LOGI(TAG, "Received Wi-Fi credentials"
-                      "\n\tSSID     : %s\n\tPassword : %s",
-                 (const char *)wifi_sta_cfg->ssid,
-                 (const char *)wifi_sta_cfg->password);
-        break;
-    }
-    case WIFI_PROV_CRED_FAIL:
-    {
-        wifi_prov_sta_fail_reason_t *reason = (wifi_prov_sta_fail_reason_t *)event_data;
-        ESP_LOGE(TAG, "Provisioning failed!\n\tReason : %s"
-                      "\n\tPlease reset to factory and retry provisioning",
-                 (*reason == WIFI_PROV_STA_AUTH_ERROR) ? "Wi-Fi station authentication failed" : "Wi-Fi access-point not found");
-        break;
-    }
-    case WIFI_PROV_CRED_SUCCESS:
-        ESP_LOGI(TAG, "Provisioning successful");
-        break;
-    case WIFI_PROV_END:
-        /* De-initialize manager once provisioning is finished */
-        wifi_prov_mgr_deinit();
-        break;
-    default:
-        break;
-    }
-}
+    uint16_t count;
+    char **ssids;
+} wifi_scan_result_t;
 
 static void wifi_event_handler(void *arg, esp_event_base_t event_base, int32_t event_id, void *event_data)
 {
@@ -137,11 +55,7 @@ static void event_handler(void *arg, esp_event_base_t event_base,
                           int32_t event_id, void *event_data)
 {
     ESP_LOGI(TAG, "+++++++++++++++++++++EVENTO++++++++++++ %ld %s", event_id, event_base);
-    if (event_base == WIFI_PROV_EVENT)
-    {
-        provisioning_event_handler(arg, event_base, event_id, event_data);
-    }
-    else if (event_base == WIFI_EVENT)
+    if (event_base == WIFI_EVENT)
     {
         wifi_event_handler(arg, event_base, event_id, event_data);
     }
@@ -151,82 +65,240 @@ static void event_handler(void *arg, esp_event_base_t event_base,
     }
 }
 
-static void wifi_init_station_mode()
+void scan_wifi_networks()
 {
-    wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
-    ESP_ERROR_CHECK(esp_wifi_init(&cfg));
-    ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
-    ESP_ERROR_CHECK(esp_wifi_start());
+    wifi_scan_config_t scan_config = {
+        .ssid = NULL, // Scan for all SSIDs
+        .bssid = NULL,
+        .channel = 0,
+        .show_hidden = true // Include hidden networks
+    };
+    ESP_ERROR_CHECK(esp_wifi_scan_start(&scan_config, true));
 }
 
-static void get_device_service_name(char *service_name, size_t max)
+static wifi_scan_result_t scan_networks()
 {
-    uint8_t eth_mac[6];
-    esp_wifi_get_mac(WIFI_IF_STA, eth_mac);
-    snprintf(service_name, max, "%s%02X%02X%02X",
-             SERV_NAME_PREFIX, eth_mac[3], eth_mac[4], eth_mac[5]);
+    wifi_scan_config_t scan_config = {
+        .ssid = NULL,
+        .bssid = NULL,
+        .channel = 0,
+        .show_hidden = true};
+
+    wifi_scan_result_t result;
+    memset(&result, 0, sizeof(wifi_scan_result_t));
+
+    ESP_ERROR_CHECK(esp_wifi_scan_start(&scan_config, true));
+    esp_wifi_scan_start(&scan_config, true);
+    esp_wifi_scan_get_ap_num(&(result.count));
+
+    result.ssids = malloc(result.count * sizeof(char *));
+    if (result.ssids == NULL)
+    {
+        ESP_LOGE("scan_wifi_networks", "Failed to allocate memory for SSIDs");
+        return result;
+    }
+
+    // Retrieve SSIDs and dynamically allocate memory for each SSID
+    wifi_ap_record_t *ap_records = malloc(result.count * sizeof(wifi_ap_record_t));
+    if (ap_records == NULL)
+    {
+        ESP_LOGE("scan_wifi_networks", "Failed to allocate memory for AP records");
+        free(result.ssids);
+        return result;
+    }
+    esp_wifi_scan_get_ap_records(&(result.count), ap_records);
+    for (int i = 0; i < result.count; i++)
+    {
+        result.ssids[i] = strdup((char *)ap_records[i].ssid);
+    }
+    free(ap_records); // Free memory for AP records
+
+    return result;
+}
+
+static esp_err_t scan_networks_handler(httpd_req_t *req)
+{
+    httpd_resp_set_type(req, "application/json");
+    wifi_scan_result_t scan_result = scan_networks();
+    cJSON *root = cJSON_CreateObject();
+    cJSON *ssid_array = cJSON_CreateArray();
+
+    // Add SSIDs to JSON array
+    for (int i = 0; i < scan_result.count; i++)
+    {
+        cJSON_AddItemToArray(ssid_array, cJSON_CreateString(scan_result.ssids[i]));
+    }
+    cJSON_AddItemToObject(root, "ssids", ssid_array);
+
+    // Convert JSON object to string
+    char *json_str = cJSON_Print(root);
+
+    // Send JSON string as the response
+    httpd_resp_sendstr(req, json_str);
+
+    // Free JSON object and string
+    cJSON_Delete(root);
+    free(json_str);
+
+    return ESP_OK;
+}
+
+/* An HTTP GET handler */
+static esp_err_t hello_get_handler(httpd_req_t *req)
+{
+    scan_wifi_networks();
+
+    uint16_t ap_count = 0;
+    wifi_ap_record_t *ap_list = NULL;
+    ESP_LOGI(TAG, "TERMINO DE ESCANEAR, POR TRAER LOS NUMEROS");
+    ESP_ERROR_CHECK(esp_wifi_scan_get_ap_num(&ap_count));
+
+    httpd_resp_set_hdr(req, "Custom-Header-1", "Custom-Value-1");
+    httpd_resp_set_hdr(req, "Custom-Header-2", "Custom-Value-2");
+
+    if (ap_count > 0)
+    {
+        ap_list = (wifi_ap_record_t *)malloc(ap_count * sizeof(wifi_ap_record_t));
+        if (ap_list)
+        {
+            ESP_ERROR_CHECK(esp_wifi_scan_get_ap_records(&ap_count, ap_list));
+        }
+    }
+
+    for (int i = 0; i < ap_count; i++)
+    {
+        char ssid[33];
+        memset(ssid, 0, sizeof(ssid));
+        memcpy(ssid, ap_list[i].ssid, sizeof(ap_list[i].ssid));
+        ESP_LOGI(TAG, "%s", ssid);
+    }
+
+    const char *resp_str = (const char *)req->user_ctx;
+    httpd_resp_send(req, resp_str, HTTPD_RESP_USE_STRLEN);
+
+    /* After sending the HTTP response the old HTTP request
+     * headers are lost. Check if HTTP request headers can be read now. */
+    if (httpd_req_get_hdr_value_len(req, "Host") == 0)
+    {
+        ESP_LOGI(TAG, "Request headers lost");
+    }
+    return ESP_OK;
+}
+
+static const httpd_uri_t hello = {
+    .uri = "/",
+    .method = HTTP_GET,
+    .handler = hello_get_handler,
+    /* Let's pass response string in user
+     * context to demonstrate it's usage */
+    .user_ctx = "Hello World!"};
+
+static const httpd_uri_t scan = {
+    .uri = "/scan",
+    .method = HTTP_GET,
+    .handler = scan_networks_handler,
+    .user_ctx = NULL};
+
+esp_err_t http_404_error_handler(httpd_req_t *req, httpd_err_code_t err)
+{
+    if (strcmp("/hello", req->uri) == 0)
+    {
+        httpd_resp_send_err(req, HTTPD_404_NOT_FOUND, "/hello URI is not available");
+        /* Return ESP_OK to keep underlying socket open */
+        return ESP_OK;
+    }
+    else if (strcmp("/echo", req->uri) == 0)
+    {
+        httpd_resp_send_err(req, HTTPD_404_NOT_FOUND, "/echo URI is not available");
+        /* Return ESP_FAIL to close underlying socket */
+        return ESP_FAIL;
+    }
+    /* For any other URI send 404 and close socket */
+    httpd_resp_send_err(req, HTTPD_404_NOT_FOUND, "Some 404 error message");
+    return ESP_FAIL;
+}
+
+static httpd_handle_t start_webserver(void)
+{
+    httpd_handle_t server = NULL;
+    httpd_config_t config = HTTPD_DEFAULT_CONFIG();
+    config.lru_purge_enable = true;
+
+    ESP_LOGI(TAG, "Starting server on port: '%d'", config.server_port);
+    if (httpd_start(&server, &config) == ESP_OK)
+    {
+        ESP_LOGI(TAG, "Registering URI handlers");
+        httpd_register_uri_handler(server, &hello);
+        httpd_register_uri_handler(server, &scan);
+        return server;
+    }
+    ESP_LOGI(TAG, "Error starting server!");
+    return NULL;
+}
+
+static void stop_webserver(httpd_handle_t server)
+{
+    httpd_stop(server);
+}
+
+static void disconnect_handler(void *arg, esp_event_base_t event_base,
+                               int32_t event_id, void *event_data)
+{
+    httpd_handle_t *server = (httpd_handle_t *)arg;
+    if (*server)
+    {
+        ESP_LOGI(TAG, "Stopping webserver");
+        stop_webserver(*server);
+        *server = NULL;
+    }
+}
+
+static void connect_handler(void *arg, esp_event_base_t event_base,
+                            int32_t event_id, void *event_data)
+{
+    ESP_LOGI(TAG, "ARRANCANDO WEBSERVER");
+    httpd_handle_t *server = (httpd_handle_t *)arg;
+    if (*server == NULL)
+    {
+        ESP_LOGI(TAG, "Starting webserver");
+        *server = start_webserver();
+    }
 }
 
 esp_err_t app_wifi_init(void)
 {
-    esp_netif_init();
-
+    ESP_ERROR_CHECK(esp_netif_init());
     ESP_ERROR_CHECK(esp_event_loop_create_default());
+    esp_netif_create_default_wifi_ap();
     wifi_event_group = xEventGroupCreate();
 
-    ESP_ERROR_CHECK(esp_event_handler_register(WIFI_PROV_EVENT, ESP_EVENT_ANY_ID, &event_handler, NULL));
+    // ESP_ERROR_CHECK(esp_event_handler_register(WIFI_PROV_EVENT, ESP_EVENT_ANY_ID, &event_handler, NULL));
     ESP_ERROR_CHECK(esp_event_handler_register(WIFI_EVENT, ESP_EVENT_ANY_ID, &event_handler, NULL));
-    ESP_ERROR_CHECK(esp_event_handler_register(IP_EVENT, IP_EVENT_STA_GOT_IP, &event_handler, NULL));
+    // ESP_ERROR_CHECK(esp_event_handler_register(IP_EVENT, IP_EVENT_STA_GOT_IP, &event_handler, NULL));
 
-    esp_netif_create_default_wifi_ap();
     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
     ESP_ERROR_CHECK(esp_wifi_init(&cfg));
+    wifi_config_t conf = {
+        .ap = {
+            .ssid = "admin-milos",
+            .ssid_len = strlen("admin-milos"),
+            .password = "admin-milos",
+            .max_connection = 4,
+            .authmode = WIFI_AUTH_WPA_WPA2_PSK},
+    };
+
+    ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_APSTA));
+    ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_AP, &conf));
+    ESP_ERROR_CHECK(esp_wifi_start());
+
     return ESP_OK;
 }
 
 esp_err_t app_wifi_start(void)
 {
-
-    wifi_prov_mgr_config_t config = {
-        .scheme = wifi_prov_scheme_softap,
-        .scheme_event_handler = WIFI_PROV_EVENT_HANDLER_NONE,
-    };
-
-    ESP_ERROR_CHECK(wifi_prov_mgr_init(config));
-
-    bool provisioned = false;
-    ESP_ERROR_CHECK(wifi_prov_mgr_is_provisioned(&provisioned));
-
-    if (!provisioned)
-    {
-        ESP_LOGI(TAG, "Starting provisioning");
-
-        const char *service_name = "milos_device";
-        // char service_name[12];
-        // get_device_service_name(service_name, sizeof(service_name));
-
-        wifi_prov_security_t security = WIFI_PROV_SECURITY_1;
-        const char *pop = NULL;
-        const char *service_key = "admin-milos";
-        /* Start provisioning service */
-        ESP_ERROR_CHECK(wifi_prov_mgr_start_provisioning(security, pop, service_name, service_key));
-
-        // print_qr(service_name, pop, PROV_TRANSPORT_BLE);
-
-        /* Uncomment the following to wait for the provisioning to finish and then release
-         * the resources of the manager. Since in this case de-initialization is triggered
-         * by the configured prov_event_handler(), we don't need to call the following */
-        // wifi_prov_mgr_wait();
-        //  wifi_prov_mgr_deinit();
-    }
-    else
-    {
-        ESP_LOGI(TAG, "Already provisioned, starting Wi-Fi STA");
-        wifi_prov_mgr_deinit();
-        wifi_init_station_mode();
-    }
-
-    /* Wait for Wi-Fi connection */
-    xEventGroupWaitBits(wifi_event_group, WIFI_CONNECTED_EVENT, false, true, portMAX_DELAY);
+    static httpd_handle_t server = NULL;
+    ESP_ERROR_CHECK(esp_event_handler_register(IP_EVENT, IP_EVENT_STA_GOT_IP, &connect_handler, &server));
+    ESP_ERROR_CHECK(esp_event_handler_register(WIFI_EVENT, WIFI_EVENT_STA_DISCONNECTED, &disconnect_handler, &server));
+    server = start_webserver();
     return ESP_OK;
 }
