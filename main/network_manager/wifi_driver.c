@@ -6,19 +6,17 @@
 #include <freertos/event_groups.h>
 #include <esp_wifi.h>
 #include <esp_event.h>
-#include "cJSON.h"
-
-#include <esp_idf_version.h>
 #include <esp_netif.h>
 #include <esp_http_server.h>
-
-#define PROV_TRANSPORT_SOFTAP "softap"
+#include "cJSON.h"
 
 static const char *TAG = "app_wifi";
 
-/* Signal Wi-Fi events on this event-group */
 const int WIFI_CONNECTED_EVENT = BIT0;
 static EventGroupHandle_t wifi_event_group;
+
+extern const uint8_t provisioning_html_start[] asm("_binary_provisioning_html_start");
+extern const uint8_t provisioning_html_end[] asm("_binary_provisioning_html_end");
 
 typedef struct
 {
@@ -123,65 +121,27 @@ static esp_err_t scan_networks_handler(httpd_req_t *req)
     cJSON *root = cJSON_CreateObject();
     cJSON *ssid_array = cJSON_CreateArray();
 
-    // Add SSIDs to JSON array
     for (int i = 0; i < scan_result.count; i++)
     {
         cJSON_AddItemToArray(ssid_array, cJSON_CreateString(scan_result.ssids[i]));
     }
     cJSON_AddItemToObject(root, "ssids", ssid_array);
 
-    // Convert JSON object to string
     char *json_str = cJSON_Print(root);
 
-    // Send JSON string as the response
     httpd_resp_sendstr(req, json_str);
 
-    // Free JSON object and string
     cJSON_Delete(root);
     free(json_str);
 
     return ESP_OK;
 }
 
-/* An HTTP GET handler */
 static esp_err_t hello_get_handler(httpd_req_t *req)
 {
-    scan_wifi_networks();
-
-    uint16_t ap_count = 0;
-    wifi_ap_record_t *ap_list = NULL;
-    ESP_LOGI(TAG, "TERMINO DE ESCANEAR, POR TRAER LOS NUMEROS");
-    ESP_ERROR_CHECK(esp_wifi_scan_get_ap_num(&ap_count));
-
-    httpd_resp_set_hdr(req, "Custom-Header-1", "Custom-Value-1");
-    httpd_resp_set_hdr(req, "Custom-Header-2", "Custom-Value-2");
-
-    if (ap_count > 0)
-    {
-        ap_list = (wifi_ap_record_t *)malloc(ap_count * sizeof(wifi_ap_record_t));
-        if (ap_list)
-        {
-            ESP_ERROR_CHECK(esp_wifi_scan_get_ap_records(&ap_count, ap_list));
-        }
-    }
-
-    for (int i = 0; i < ap_count; i++)
-    {
-        char ssid[33];
-        memset(ssid, 0, sizeof(ssid));
-        memcpy(ssid, ap_list[i].ssid, sizeof(ap_list[i].ssid));
-        ESP_LOGI(TAG, "%s", ssid);
-    }
-
-    const char *resp_str = (const char *)req->user_ctx;
-    httpd_resp_send(req, resp_str, HTTPD_RESP_USE_STRLEN);
-
-    /* After sending the HTTP response the old HTTP request
-     * headers are lost. Check if HTTP request headers can be read now. */
-    if (httpd_req_get_hdr_value_len(req, "Host") == 0)
-    {
-        ESP_LOGI(TAG, "Request headers lost");
-    }
+    httpd_resp_set_type(req, "text/html");
+    httpd_resp_send(req, (const char *)provisioning_html_start, provisioning_html_end - provisioning_html_start);
+    //httpd_resp_send_chunk(req, NULL, 0);
     return ESP_OK;
 }
 
@@ -256,7 +216,6 @@ static void disconnect_handler(void *arg, esp_event_base_t event_base,
 static void connect_handler(void *arg, esp_event_base_t event_base,
                             int32_t event_id, void *event_data)
 {
-    ESP_LOGI(TAG, "ARRANCANDO WEBSERVER");
     httpd_handle_t *server = (httpd_handle_t *)arg;
     if (*server == NULL)
     {
