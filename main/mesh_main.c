@@ -711,7 +711,7 @@ esp_err_t init_irs(void)
 void app_main(void)
 {
     ESP_LOGI(MESH_TAG, "%i", ESP_IDF_VERSION);
-    vTaskDelay(10000 / portTICK_PERIOD_MS);
+    vTaskDelay(2000 / portTICK_PERIOD_MS);
     ESP_LOGI(MESH_TAG, "Iniciando el main");
     init_irs();
     nvs_handle_t my_handle;

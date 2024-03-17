@@ -10,6 +10,8 @@
 #include <esp_http_server.h>
 #include "cJSON.h"
 
+#define MIN(a, b) ((a) < (b) ? (a) : (b))
+
 static const char *TAG = "app_wifi";
 
 const int WIFI_CONNECTED_EVENT = BIT0;
@@ -141,22 +143,95 @@ static esp_err_t hello_get_handler(httpd_req_t *req)
 {
     httpd_resp_set_type(req, "text/html");
     httpd_resp_send(req, (const char *)provisioning_html_start, provisioning_html_end - provisioning_html_start);
-    //httpd_resp_send_chunk(req, NULL, 0);
     return ESP_OK;
+}
+
+static esp_err_t provision_post_handler(httpd_req_t *req)
+{
+    char *buf = NULL;
+    size_t buf_len = req->content_len;
+    int ret;
+
+    buf = malloc(buf_len + 1);
+    if (buf == NULL)
+    {
+        ESP_LOGE(TAG, "Failed to allocate memory for request body");
+        return ESP_FAIL;
+    }
+
+    if ((ret = httpd_req_recv(req, buf, buf_len)) <= 0)
+    {
+        if (ret == HTTPD_SOCK_ERR_TIMEOUT)
+        {
+            return ESP_OK;
+        }
+        free(buf);
+        ESP_LOGE(TAG, "Failed to receive request body");
+        return ESP_FAIL;
+    }
+
+    buf[buf_len] = '\0';
+
+    char *wifi_ssid = NULL, *wifi_password = NULL, *mesh_name = NULL, *email = NULL;
+
+    wifi_ssid = malloc(strlen(buf) + 1);
+    wifi_password = malloc(strlen(buf) + 1);
+    mesh_name = malloc(strlen(buf) + 1);
+    email = malloc(strlen(buf) + 1);
+
+    if (wifi_ssid == NULL || wifi_password == NULL || mesh_name == NULL || email == NULL)
+    {
+        ESP_LOGE(TAG, "Failed to allocate memory for SSID and password");
+        free(wifi_ssid);
+        free(wifi_password);
+        free(mesh_name);
+        free(email);
+        return ESP_FAIL;
+    }
+
+    if (httpd_query_key_value(buf, "wifi_ssid", wifi_ssid, strlen(buf) + 1) == ESP_OK &&
+        httpd_query_key_value(buf, "wifi_password", wifi_password, strlen(buf) + 1) == ESP_OK &&
+        httpd_query_key_value(buf, "mesh_name", mesh_name, strlen(buf) + 1) == ESP_OK &&
+        httpd_query_key_value(buf, "email", email, strlen(buf) + 1) == ESP_OK)
+    {
+        ESP_LOGI(TAG, "Received Wi-Fi SSID: %s, Password: %s, Mesh Name: %s, Email: %s", wifi_ssid, wifi_password, mesh_name, email);
+        const char *response = "Form submitted successfully!";
+        httpd_resp_send(req, response, strlen(response));
+        free(wifi_ssid);
+        free(wifi_password);
+        free(mesh_name);
+        free(email);
+        free(buf);
+        return ESP_OK;
+
+        // Logica de aprovisionamiento
+    }
+
+    httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Invalid or missing form data");
+    free(wifi_ssid);
+    free(wifi_password);
+    free(mesh_name);
+    free(email);
+    free(buf);
+    return ESP_FAIL;
 }
 
 static const httpd_uri_t hello = {
     .uri = "/",
     .method = HTTP_GET,
     .handler = hello_get_handler,
-    /* Let's pass response string in user
-     * context to demonstrate it's usage */
-    .user_ctx = "Hello World!"};
+    .user_ctx = NULL};
 
 static const httpd_uri_t scan = {
     .uri = "/scan",
     .method = HTTP_GET,
     .handler = scan_networks_handler,
+    .user_ctx = NULL};
+
+static const httpd_uri_t provision = {
+    .uri = "/provision",
+    .method = HTTP_POST,
+    .handler = provision_post_handler,
     .user_ctx = NULL};
 
 esp_err_t http_404_error_handler(httpd_req_t *req, httpd_err_code_t err)
@@ -190,6 +265,7 @@ static httpd_handle_t start_webserver(void)
         ESP_LOGI(TAG, "Registering URI handlers");
         httpd_register_uri_handler(server, &hello);
         httpd_register_uri_handler(server, &scan);
+        httpd_register_uri_handler(server, &provision);
         return server;
     }
     ESP_LOGI(TAG, "Error starting server!");
@@ -231,7 +307,6 @@ esp_err_t app_wifi_init(void)
     esp_netif_create_default_wifi_ap();
     wifi_event_group = xEventGroupCreate();
 
-    // ESP_ERROR_CHECK(esp_event_handler_register(WIFI_PROV_EVENT, ESP_EVENT_ANY_ID, &event_handler, NULL));
     ESP_ERROR_CHECK(esp_event_handler_register(WIFI_EVENT, ESP_EVENT_ANY_ID, &event_handler, NULL));
     // ESP_ERROR_CHECK(esp_event_handler_register(IP_EVENT, IP_EVENT_STA_GOT_IP, &event_handler, NULL));
 

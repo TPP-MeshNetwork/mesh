@@ -31,31 +31,43 @@
         max-width: 300px;
         margin: 0 auto;
       }
+      #wifi_ssid{
+        width: 100%;
+      }
       input[type="text"],
       input[type="password"] {
         width: 100%;
         padding: 10px;
         margin: 5px 0;
       }
-      input[type="submit"] {
+      input[type="submit"], input[type="button"]{
         width: 100%;
         padding: 10px;
         background-color: #4caf50;
         color: white;
         border: none;
+        border-radius: 1em;
       }
-      input[type="submit"]:hover {
+      input[type="submit"]:hover, input[type="button"]:hover{
         background-color: #45a049;
       }
+      #spinner-button{
+        width: 35%;
+      }
+      #submit{
+        margin-top: 1em;
+        padding-top: 1em;
+      }
       #spinner {
-        width: 48px;
-        height: 48px;
+        width: 36px;
+        height: 36px;
         border: 3px solid #FFF;
         border-radius: 50%;
         display: inline-block;
         position: relative;
         box-sizing: border-box;
         animation: rotation 1s linear infinite;
+        padding: 1em;
         display: none;
 } 
     #spinner::after {
@@ -102,21 +114,18 @@
     </div>
     <h2>Provisioning Device</h2>
 
-    <form class="form" action="/submit" method="post">
+    <form class="form" action="/submit" method="post" id="provision-form">
       <div class="ssid-list">
         <label for="wifi_ssid">SSIDs</label>
-        <select id="wifi_ssid" name="wifi_ssid">
-          <option value="%s">cuevita</option>
-          <option value="%s">cuevita5</option>
-          <option value="%s">Personal Wifi Zon</option>
+        <select id="wifi_ssid" name="wifi_ssid" required>
         </select>
-        <button id="spinner-button" type="button" onclick="fetchSSIDs()"><span>↻</span></button>
+        <input id="spinner-button" type="button" onclick="fetchSSIDs()" value="refresh">
         <div id="spinner"></div>
       </div>
-      <div class="form">Password: <input type="password" name="wifi_password" /><br /></div>
-      <div class="form">Mesh Name: <input type="text" name="mesh_name" /><br /></div>
-      <div class="form"></siv>Email: <input type="text" name="email" /><br /></div>
-      <input type="submit" value="Submit" />
+      <div class="form">Password: <input type="password" name="wifi_password" required/><br /></div>
+      <div class="form">Mesh Name: <input type="text" name="mesh_name" required/><br /></div>
+      <div class="form"></siv>Email: <input type="text" name="email" required/><br /></div>
+      <input type="submit" id="submit" value="Submit" />
     </form>
     <script>
         function fetchSSIDs() {
@@ -146,6 +155,29 @@
                     console.error('Error fetching network list:', error);
                 });
         }
+
+        document.getElementById('provision-form').addEventListener('submit', function(event) {
+            event.preventDefault();
+
+            var ssid = document.getElementById('wifi_ssid').value;
+            var password = document.getElementsByName('wifi_password')[0].value;
+            var mesh_name = document.getElementsByName('mesh_name')[0].value;
+            var email = document.getElementsByName('email')[0].value;
+
+            var xhr = new XMLHttpRequest();
+            xhr.open('POST', '/provision', true);
+            xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
+            xhr.onreadystatechange = function() {
+                if (xhr.readyState === XMLHttpRequest.DONE) {
+                    if (xhr.status === 200) {
+                        alert('Form submitted successfully!');
+                    } else {
+                        alert('Error submitting form: ' + xhr.statusText);
+                    }
+                }
+            };
+            xhr.send('wifi_ssid=' + encodeURIComponent(ssid) + '&wifi_password=' + encodeURIComponent(password) + "&mesh_name=" + encodeURIComponent(mesh_name) + "&email=" + encodeURIComponent(email));
+        });
 
         document.addEventListener('DOMContentLoaded', fetchSSIDs);
     </script>
