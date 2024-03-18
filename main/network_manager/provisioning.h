@@ -10,5 +10,7 @@
 #include "stdbool.h"
 #include "esp_err.h"
 
+typedef void (ConfigCallback)(char* ssid, char* password, char* mesh_name, char* email);
+
 esp_err_t app_wifi_init(void);
-esp_err_t app_wifi_start(void);
+esp_err_t app_wifi_start(ConfigCallback* callback);

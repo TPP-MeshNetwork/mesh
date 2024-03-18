@@ -16,6 +16,7 @@ static const char *TAG = "app_wifi";
 
 const int WIFI_CONNECTED_EVENT = BIT0;
 static EventGroupHandle_t wifi_event_group;
+typedef void (ConfigCallback)(char* ssid, char* password, char* mesh_name, char* email);
 
 extern const uint8_t provisioning_html_start[] asm("_binary_provisioning_html_start");
 extern const uint8_t provisioning_html_end[] asm("_binary_provisioning_html_end");
@@ -25,6 +26,19 @@ typedef struct
     uint16_t count;
     char **ssids;
 } wifi_scan_result_t;
+
+// Define a structure to hold extra arguments for the handler
+typedef struct {
+    int luckyNumber;
+    ConfigCallback* callback;
+} handler_args_t;
+
+
+typedef struct {
+    httpd_handle_t server;
+    void* callback;
+} server_custom_arg_t;
+
 
 static void wifi_event_handler(void *arg, esp_event_base_t event_base, int32_t event_id, void *event_data)
 {
@@ -151,6 +165,8 @@ static esp_err_t provision_post_handler(httpd_req_t *req)
     char *buf = NULL;
     size_t buf_len = req->content_len;
     int ret;
+    ESP_LOGI(TAG, "Lucky Number: %d", ((handler_args_t *)req->user_ctx)->luckyNumber);
+    handler_args_t *args = (handler_args_t *)req->user_ctx;
 
     buf = malloc(buf_len + 1);
     if (buf == NULL)
@@ -197,6 +213,14 @@ static esp_err_t provision_post_handler(httpd_req_t *req)
         ESP_LOGI(TAG, "Received Wi-Fi SSID: %s, Password: %s, Mesh Name: %s, Email: %s", wifi_ssid, wifi_password, mesh_name, email);
         const char *response = "Form submitted successfully!";
         httpd_resp_send(req, response, strlen(response));
+
+        // Call Callback if exists
+        // TODO
+        if (args->callback != NULL) {
+            args->callback(wifi_ssid, wifi_password, mesh_name, email);
+        }
+        
+        
         free(wifi_ssid);
         free(wifi_password);
         free(mesh_name);
@@ -216,6 +240,11 @@ static esp_err_t provision_post_handler(httpd_req_t *req)
     return ESP_FAIL;
 }
 
+handler_args_t extra_args = {
+    .luckyNumber = 77,
+
+};
+
 static const httpd_uri_t hello = {
     .uri = "/",
     .method = HTTP_GET,
@@ -228,7 +257,7 @@ static const httpd_uri_t scan = {
     .handler = scan_networks_handler,
     .user_ctx = NULL};
 
-static const httpd_uri_t provision = {
+static httpd_uri_t provision = {
     .uri = "/provision",
     .method = HTTP_POST,
     .handler = provision_post_handler,
@@ -253,11 +282,15 @@ esp_err_t http_404_error_handler(httpd_req_t *req, httpd_err_code_t err)
     return ESP_FAIL;
 }
 
-static httpd_handle_t start_webserver(void)
+static httpd_handle_t start_webserver(void* callback)
 {
     httpd_handle_t server = NULL;
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
     config.lru_purge_enable = true;
+
+    extra_args.callback = callback;
+
+    provision.user_ctx = &extra_args;
 
     ESP_LOGI(TAG, "Starting server on port: '%d'", config.server_port);
     if (httpd_start(&server, &config) == ESP_OK)
@@ -292,11 +325,12 @@ static void disconnect_handler(void *arg, esp_event_base_t event_base,
 static void connect_handler(void *arg, esp_event_base_t event_base,
                             int32_t event_id, void *event_data)
 {
-    httpd_handle_t *server = (httpd_handle_t *)arg;
+    server_custom_arg_t *server_custom_arg = (server_custom_arg_t *)arg;
+    httpd_handle_t *server = (httpd_handle_t *)server_custom_arg->server;
     if (*server == NULL)
     {
         ESP_LOGI(TAG, "Starting webserver");
-        *server = start_webserver();
+        *server = start_webserver(server_custom_arg->callback);
     }
 }
 
@@ -328,11 +362,16 @@ esp_err_t app_wifi_init(void)
     return ESP_OK;
 }
 
-esp_err_t app_wifi_start(void)
+esp_err_t app_wifi_start(ConfigCallback* callback)
 {
     static httpd_handle_t server = NULL;
-    ESP_ERROR_CHECK(esp_event_handler_register(IP_EVENT, IP_EVENT_STA_GOT_IP, &connect_handler, &server));
+    server_custom_arg_t server_custom_arg = {
+        .server = NULL,
+        .callback = callback
+    };
+    ESP_ERROR_CHECK(esp_event_handler_register(IP_EVENT, IP_EVENT_STA_GOT_IP, &connect_handler, &server_custom_arg));
     ESP_ERROR_CHECK(esp_event_handler_register(WIFI_EVENT, WIFI_EVENT_STA_DISCONNECTED, &disconnect_handler, &server));
-    server = start_webserver();
+    server_custom_arg.server = start_webserver(callback);
+
     return ESP_OK;
 }

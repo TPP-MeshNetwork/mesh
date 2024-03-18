@@ -26,6 +26,7 @@
 #include <freertos/FreeRTOS.h>
 #include "esp_system.h"
 #include "network_manager/provisioning.h"
+#include "persistence/persistence.h"
 
 /*******************************************************
  *                Macros
@@ -39,6 +40,8 @@
  *******************************************************/
 #define RST_BTN 13
 #define MESH_ID_SIZE 6
+#define UNCONFIGURED_FLAG 0
+#define CONFIGURED_FLAG 1
 static const char *MESH_TAG = "mesh_main";
 static const uint8_t MESH_ID[MESH_ID_SIZE] = {0x77, 0x77, 0x77, 0x77, 0x77, 0x76};
 
@@ -57,6 +60,7 @@ static uint8_t s_mesh_tx_payload[CONFIG_MESH_ROUTE_TABLE_SIZE * 6 + 1];
 static TickType_t ticks_from_start = 0;
 static unsigned long int last_time = 0;
 static unsigned long int last_change = 0;
+
 
 void publish(QueueHandle_t publishQueue, const char *topic, const char *message)
 {
@@ -708,12 +712,22 @@ esp_err_t init_irs(void)
     return ESP_OK;
 }
 
+void say_hello(char *ssid, char *password, char *mesh_name, char *email) {
+    ESP_LOGI(MESH_TAG, "Llamé al callback");
+    ESP_LOGI(MESH_TAG, "Received config Wi-Fi SSID: %s, Password: %s, Mesh Name: %s, Email: %s", ssid, password, mesh_name, email);
+    persistence_handler_t handler = persistence_open();
+    persistence_set_u8(handler, "configured", CONFIGURED_FLAG);
+    esp_restart();
+}
+
 void app_main(void)
 {
     ESP_LOGI(MESH_TAG, "%i", ESP_IDF_VERSION);
     vTaskDelay(2000 / portTICK_PERIOD_MS);
     ESP_LOGI(MESH_TAG, "Iniciando el main");
-    init_irs();
+    //greet();
+    //init_irs();
+    /*
     nvs_handle_t my_handle;
     esp_err_t err = nvs_flash_init();
     bool available_nvs = false;
@@ -754,17 +768,38 @@ void app_main(void)
 
         // nvs_close(my_handle);
     }
-
+    */
     //ESP_ERROR_CHECK(nvs_flash_erase());
-    app_wifi_init();
 
-    app_wifi_start();
+    // Load persistence to check if device has already been configured or not
+    persistence_err_t persistence_err = persistence_init();
+    if (persistence_err == UNABLE_INITIALIZE_PERSISTENCE) {
+        ESP_LOGE(MESH_TAG, "Error al inicializar la persistencia");
+    } else {
+        ESP_LOGI(MESH_TAG, "Inicializado la persistencia");
+        //TODO: Check for possible errors and act accordingly
+        persistence_handler_t handler = persistence_open();
+        uint8_t is_configured;
+        persistence_err = persistence_get_u8(handler, "configured", &is_configured);
+        if (is_configured == CONFIGURED_FLAG) {
+            ESP_LOGI(MESH_TAG, "El dispositivo ya ha sido configurado");
+        } else {
+            ESP_LOGI(MESH_TAG, "El dispositivo no ha sido configurado");
+            ESP_LOGI(MESH_TAG, "Iniciando el webserver");
+            app_wifi_init();
 
+            app_wifi_start(&say_hello);
+            ESP_LOGI(MESH_TAG, "Finalizado el webserver");
+        }
+        persistence_close(handler);
+    }
+
+    
     // size_t ssid_size = 32;
     // char* ssid = malloc(ssid_size);
     // nvs_get_str("wifi_ssid")
     int count = 0;
-    while (false)
+    while (true)
     {
         ESP_LOGI(MESH_TAG, "En el loop numero %d", count);
         ticks_from_start = xTaskGetTickCount();
@@ -772,25 +807,5 @@ void app_main(void)
         ESP_LOGI(MESH_TAG, "Tiempo desde que empezo: %ld", ticks_from_start / configTICK_RATE_HZ);
         vTaskDelay(5000 / portTICK_PERIOD_MS);
         count++;
-
-        if (count == 8)
-        {
-            err = nvs_get_str(my_handle, "wifi_ssid", ssid, &ssid_size);
-            switch (err)
-            {
-            case ESP_OK:
-                ESP_LOGI(MESH_TAG, "encontramos SSID: %s", ssid);
-                ESP_LOGI(MESH_TAG, "Lo borramos");
-                nvs_erase_all(my_handle);
-                break;
-            case ESP_ERR_NVS_NOT_FOUND:
-                ESP_LOGI(MESH_TAG, "No encontramos el SSID");
-                ESP_LOGI(MESH_TAG, "GUARDO AHORA UN VALOR");
-                nvs_set_str(my_handle, "wifi_ssid", "SSID_DE_PRUEBA_GATO");
-                break;
-            default:
-                ESP_LOGI(MESH_TAG, "No se que paso");
-            }
-        }
     }
 }
