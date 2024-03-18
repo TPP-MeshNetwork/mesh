@@ -59,7 +59,7 @@ static uint8_t s_mesh_tx_payload[CONFIG_MESH_ROUTE_TABLE_SIZE * 6 + 1];
 /*For button pressing*/
 static TickType_t ticks_from_start = 0;
 static unsigned long int last_time = 0;
-static unsigned long int last_change = 0;
+static bool last_status_is_pressed = true;
 
 
 void publish(QueueHandle_t publishQueue, const char *topic, const char *message)
@@ -669,45 +669,43 @@ void app_main2(void)
              esp_mesh_is_root_fixed() ? "root fixed" : "root not fixed");
 }
 
-void push_handler(void *arg)
-{
-    bool pressed = !(bool)gpio_get_level(RST_BTN);
-    unsigned long int now = xTaskGetTickCount() / configTICK_RATE_HZ;
-    if (!pressed)
-    {
-        // The button has been released, I must check when was the last interrupt
-        if (now - last_time > 5 || last_time == 0 || now < last_time)
-        {
-            // The button was pressed for more than 5 seconds
-            esp_restart();
+
+void check_pin_status() {
+    ESP_LOGI(MESH_TAG, "Iniciando el check_pin_status");
+    while(1) {
+        bool pressed = !(bool) gpio_get_level(RST_BTN);
+        unsigned long int now = xTaskGetTickCount() / configTICK_RATE_HZ;
+
+        if (pressed == last_status_is_pressed) {
+            // No hubo cambios en el estado no debo hacer nada
+        } else {
+            if (now - last_time < 1) {
+                // Ingoro por que paso poco tiempo
+            } else {
+                if (!pressed) {
+                    // Soltamos el boton
+                    if (now - last_time > 5) {
+                        ESP_LOGI(MESH_TAG, ">>> DETECTO SOLTADO DEL BOTON <<<");
+                        ESP_LOGI(MESH_TAG, ">>> BORRANDO NVS y REINICIANDO <<<");
+                        persistence_erase_namespace();
+                        esp_restart();
+                    }
+                } else {
+                    // Presionamos el boton
+                    ESP_LOGI(MESH_TAG, ">>> DETECTO PRESIONADO DEL BOTON <<<");
+                }
+                last_time = now;
+                last_status_is_pressed = pressed;
+            }
         }
+        vTaskDelay(20/portTICK_PERIOD_MS);
     }
-    if (abs(now - last_change) < 1)
-    {
-        // The button was pressed for less than 1 second
-        return;
-    }
-    last_time = now;
+    vTaskDelete(NULL);
 }
 
-esp_err_t init_irs(void)
-{
-    gpio_config_t pGPIOCconfig;
-
-    pGPIOCconfig.pin_bit_mask = (1ULL << RST_BTN);
-    pGPIOCconfig.mode = GPIO_MODE_INPUT;
-    pGPIOCconfig.pull_up_en = GPIO_PULLUP_ENABLE;
-    pGPIOCconfig.pull_down_en = GPIO_PULLDOWN_DISABLE;
-    pGPIOCconfig.intr_type = GPIO_INTR_ANYEDGE;
-
-    gpio_config(&pGPIOCconfig);
-
-    gpio_install_isr_service(0);
-    gpio_isr_handler_add(RST_BTN, push_handler, (void *)false);
-
-    // Release
-    // gpio_set_intr_type(RST_BTN, GPIO_INTR_POSEDGE);
-    // gpio_isr_handler_add(RST_BTN, push_handler, (void*) true);
+esp_err_t config_button(void) {
+    gpio_reset_pin(RST_BTN);
+    gpio_set_direction(RST_BTN, GPIO_MODE_INPUT);
 
     return ESP_OK;
 }
@@ -722,6 +720,7 @@ void say_hello(char *ssid, char *password, char *mesh_name, char *email) {
 
 void app_main(void)
 {
+    config_button();
     ESP_LOGI(MESH_TAG, "%i", ESP_IDF_VERSION);
     vTaskDelay(2000 / portTICK_PERIOD_MS);
     ESP_LOGI(MESH_TAG, "Iniciando el main");
@@ -783,6 +782,22 @@ void app_main(void)
         persistence_err = persistence_get_u8(handler, "configured", &is_configured);
         if (is_configured == CONFIGURED_FLAG) {
             ESP_LOGI(MESH_TAG, "El dispositivo ya ha sido configurado");
+
+            xTaskCreate(check_pin_status, "button", 3072, NULL,5,NULL );
+    
+            // size_t ssid_size = 32;
+            // char* ssid = malloc(ssid_size);
+            // nvs_get_str("wifi_ssid")
+            int count = 0;
+            while (true)
+            {
+                ESP_LOGI(MESH_TAG, "En el loop numero %d", count);
+                ticks_from_start = xTaskGetTickCount();
+
+                ESP_LOGI(MESH_TAG, "Tiempo desde que empezo: %ld", ticks_from_start / configTICK_RATE_HZ);
+                vTaskDelay(5000 / portTICK_PERIOD_MS);
+                count++;
+            }
         } else {
             ESP_LOGI(MESH_TAG, "El dispositivo no ha sido configurado");
             ESP_LOGI(MESH_TAG, "Iniciando el webserver");
@@ -792,20 +807,5 @@ void app_main(void)
             ESP_LOGI(MESH_TAG, "Finalizado el webserver");
         }
         persistence_close(handler);
-    }
-
-    
-    // size_t ssid_size = 32;
-    // char* ssid = malloc(ssid_size);
-    // nvs_get_str("wifi_ssid")
-    int count = 0;
-    while (true)
-    {
-        ESP_LOGI(MESH_TAG, "En el loop numero %d", count);
-        ticks_from_start = xTaskGetTickCount();
-
-        ESP_LOGI(MESH_TAG, "Tiempo desde que empezo: %ld", ticks_from_start / configTICK_RATE_HZ);
-        vTaskDelay(5000 / portTICK_PERIOD_MS);
-        count++;
     }
 }
