@@ -103,17 +103,19 @@ void log_perfdata()
     printf("\n\n free heap size = %ld \t  min_free_heap_size = %ld \n\n", free_heap_size, min_free_heap_size);
 }
 
-char *create_topic(char *topic_type, char *topic_suffix)
-{
-    if (topic_type == NULL || topic_suffix == NULL)
-    {
+char * create_topic(char* topic_type, char* topic_suffix, bool withDeviceIndicator) {
+    if (topic_type == NULL || topic_suffix == NULL) {
         ESP_LOGE(MESH_TAG, "Error in create_topic: topic_type or topic_suffix is NULL");
         return NULL;
     }
     uint8_t macAp[6];
     esp_wifi_get_mac(WIFI_IF_AP, macAp);
     char *topic;
-    asprintf(&topic, "/mesh/%s/device/" MACSTR "/%s/%s", MESH_TAG, MAC2STR(macAp), topic_type, topic_suffix);
+    if (withDeviceIndicator) {
+        asprintf(&topic, "/mesh/%s/device/" MACSTR "/%s/%s", MESH_TAG, MAC2STR(macAp), topic_type, topic_suffix);
+    } else {
+        asprintf(&topic, "/mesh/%s/%s/%s", MESH_TAG, topic_type, topic_suffix);
+    }
     return topic;
 }
 
@@ -131,8 +133,8 @@ char *create_message(char *message)
 
     uint8_t macAp[6];
     esp_wifi_get_mac(WIFI_IF_AP, macAp);
-    char *new_message;
-    asprintf(&new_message, "{\"mesh_id\": \"%s\", \"device_id\": \"" MACSTR "\", \"timestamp\": %lld, %s }", MESH_TAG, MAC2STR(macAp), now, message);
+    char * new_message;
+    asprintf(&new_message, "{\"mesh_id\": \"%s\", \"device_id\": \"" MACSTR "\", \"timestamp_value\": %lld, %s }", MESH_TAG, MAC2STR(macAp), now, message);
     return new_message;
 }
 
@@ -146,9 +148,10 @@ void task_read_sensor_dh11(void *args)
 
     const char *sensor_name[2] = {"temperature", "humidity"};
 
-    char *sensor_topic[2] = {
-        create_topic("sensor", "temperature"),
-        create_topic("sensor", "humidity")};
+    char * sensor_topic[2] = {
+        create_topic("sensor", "temperature", true),
+        create_topic("sensor", "humidity", true)
+    };
 
     size_t sensor_length = sizeof(sensor_name) / sizeof(sensor_name[0]);
     float sensor_data[sensor_length];
@@ -249,7 +252,7 @@ void task_mqtt_graph(void *args)
     uint8_t macAp[6];
     esp_wifi_get_mac(WIFI_IF_AP, macAp);
 
-    char *topic = create_topic("graph", "report");
+    char * topic = create_topic("graph", "report", false);
 
     while (is_running)
     {
@@ -258,11 +261,11 @@ void task_mqtt_graph(void *args)
         if (esp_mesh_is_root())
         {
             // the root node has no parent so instead we get the WIFI_IF_AP -> WIFI_IF_STA
-            asprintf(&graph_message, "'layer': %d, 'root': true, 'macSta': '" MACSTR "', 'macSoftap': '" MACSTR "'", esp_mesh_get_layer(), MAC2STR(macSta), MAC2STR(macAp));
+            asprintf(&graph_message, "\"layer\": %d, \"root\": true, \"macSta\": \"" MACSTR "\", \"macSoftap\": \"" MACSTR "\"", esp_mesh_get_layer(), MAC2STR(macSta), MAC2STR(macAp));
         }
         else
         {
-            asprintf(&graph_message, "'layer': %d, 'root': false, 'macSta': '" MACSTR "', 'macSoftap': '" MACSTR "'", esp_mesh_get_layer(), MAC2STR(parent.addr), MAC2STR(macAp));
+            asprintf(&graph_message, "\"layer\": %d, \"root\": false, \"macSta\": \"" MACSTR "\", \"macSoftap\": \"" MACSTR "\"", esp_mesh_get_layer(), MAC2STR(parent.addr), MAC2STR(macAp));
         }
 
         char *message = create_message(graph_message);
@@ -784,7 +787,7 @@ void app_main(void)
             ESP_LOGI(MESH_TAG, "El dispositivo ya ha sido configurado");
 
             xTaskCreate(check_pin_status, "button", 3072, NULL,5,NULL );
-    
+
             // size_t ssid_size = 32;
             // char* ssid = malloc(ssid_size);
             // nvs_get_str("wifi_ssid")
