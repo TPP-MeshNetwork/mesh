@@ -629,7 +629,19 @@ void ip_event_handler(void *arg, esp_event_base_t event_base,
 
 void app_main2(void)
 {
-    ESP_ERROR_CHECK(nvs_flash_init());
+    //ESP_ERROR_CHECK(nvs_flash_init());
+    persistence_handler_t handler = persistence_open();
+    size_t len = 32;
+    char* ssid = malloc(32);
+    char* pwd = malloc(32);
+    uint8_t channel;
+    persistence_get_str(handler, "ssid", ssid, &len);
+    len=32;
+    persistence_get_str(handler, "password", pwd, &len);
+    persistence_get_u8(handler, "channel", &channel);
+
+    ESP_LOGI(MESH_TAG, "SSID: %s, Channel: %d, Password: %s", ssid, channel, pwd);
+
     /*  tcpip initialization */
     ESP_ERROR_CHECK(esp_netif_init());
     /*  event initialization */
@@ -654,11 +666,16 @@ void app_main2(void)
     /* mesh ID */
     memcpy((uint8_t *)&cfg.mesh_id, MESH_ID, 6);
     /* router */
-    cfg.channel = CONFIG_MESH_CHANNEL;
-    cfg.router.ssid_len = strlen(CONFIG_MESH_ROUTER_SSID);
-    memcpy((uint8_t *)&cfg.router.ssid, CONFIG_MESH_ROUTER_SSID, cfg.router.ssid_len);
-    memcpy((uint8_t *)&cfg.router.password, CONFIG_MESH_ROUTER_PASSWD,
-           strlen(CONFIG_MESH_ROUTER_PASSWD));
+    cfg.channel = channel;
+
+    //cfg.router.ssid_len = strlen(CONFIG_MESH_ROUTER_SSID);
+    //memcpy((uint8_t *)&cfg.router.ssid, CONFIG_MESH_ROUTER_SSID, cfg.router.ssid_len);
+    //memcpy((uint8_t *)&cfg.router.password, CONFIG_MESH_ROUTER_PASSWD,
+    //       strlen(CONFIG_MESH_ROUTER_PASSWD));
+    cfg.router.ssid_len = strlen(ssid);
+    memcpy((uint8_t *)&cfg.router.ssid, ssid, cfg.router.ssid_len);
+    memcpy((uint8_t *)&cfg.router.password, pwd, strlen(pwd));
+
     /* mesh softAP */
     ESP_ERROR_CHECK(esp_mesh_set_ap_authmode(CONFIG_MESH_AP_AUTHMODE));
     cfg.mesh_ap.max_connection = CONFIG_MESH_AP_CONNECTIONS;
@@ -670,6 +687,9 @@ void app_main2(void)
     ESP_ERROR_CHECK(esp_mesh_start());
     ESP_LOGI(MESH_TAG, "mesh starts successfully, heap:%" PRId32 ", %s", esp_get_free_heap_size(),
              esp_mesh_is_root_fixed() ? "root fixed" : "root not fixed");
+
+    free(ssid);
+    free(pwd);
 }
 
 
@@ -713,11 +733,15 @@ esp_err_t config_button(void) {
     return ESP_OK;
 }
 
-void say_hello(char *ssid, char *password, char *mesh_name, char *email) {
+void say_hello(char *ssid, uint8_t channel, char *password, char *mesh_name, char *email) {
     ESP_LOGI(MESH_TAG, "Llamé al callback");
-    ESP_LOGI(MESH_TAG, "Received config Wi-Fi SSID: %s, Password: %s, Mesh Name: %s, Email: %s", ssid, password, mesh_name, email);
+    ESP_LOGI(MESH_TAG, "Received config Wi-Fi SSID: %s, Channel: %d, Password: %s, Mesh Name: %s, Email: %s", ssid, channel, password, mesh_name, email);
     persistence_handler_t handler = persistence_open();
+    persistence_set_str(handler, "ssid", ssid);
+    persistence_set_str(handler, "password", password);
+    persistence_set_u8(handler, "channel", channel);
     persistence_set_u8(handler, "configured", CONFIGURED_FLAG);
+
     esp_restart();
 }
 
@@ -727,52 +751,7 @@ void app_main(void)
     ESP_LOGI(MESH_TAG, "%i", ESP_IDF_VERSION);
     vTaskDelay(2000 / portTICK_PERIOD_MS);
     ESP_LOGI(MESH_TAG, "Iniciando el main");
-    //greet();
-    //init_irs();
-    /*
-    nvs_handle_t my_handle;
-    esp_err_t err = nvs_flash_init();
-    bool available_nvs = false;
-
-    if (err == ESP_ERR_NVS_NO_FREE_PAGES || err == ESP_ERR_NVS_NEW_VERSION_FOUND)
-    {
-        ESP_LOGI(MESH_TAG, "Error en la flash");
-        ESP_ERROR_CHECK(nvs_flash_erase());
-        err = nvs_flash_init();
-    }
-
-    size_t ssid_size = 32;
-    char *ssid = malloc(ssid_size);
-
-    err = nvs_open("storage", NVS_READWRITE, &my_handle);
-    if (err != ESP_OK)
-    {
-        ESP_LOGE(MESH_TAG, "Error (%s) opening NVS handle", esp_err_to_name(err));
-        available_nvs = true;
-    }
-    else
-    {
-        ESP_LOGI(MESH_TAG, "NVS handle abierto");
-
-        err = nvs_get_str(my_handle, "wifi_ssid", ssid, &ssid_size);
-
-        switch (err)
-        {
-        case ESP_OK:
-            ESP_LOGI(MESH_TAG, "encontramos SSID: %s", ssid);
-            break;
-        case ESP_ERR_NVS_NOT_FOUND:
-            ESP_LOGI(MESH_TAG, "No encontramos el SSID");
-            // ESP_LOGIC(MESH_TAG, "GUARDO AHORA UN VALOR");
-            // nvs_set_str(my_handle, "wifi_ssid", "SSID_DE_PRUEBA_GATO");
-            break;
-        }
-
-        // nvs_close(my_handle);
-    }
-    */
-    //ESP_ERROR_CHECK(nvs_flash_erase());
-
+    
     // Load persistence to check if device has already been configured or not
     persistence_err_t persistence_err = persistence_init();
     if (persistence_err == UNABLE_INITIALIZE_PERSISTENCE) {
@@ -787,10 +766,8 @@ void app_main(void)
             ESP_LOGI(MESH_TAG, "El dispositivo ya ha sido configurado");
 
             xTaskCreate(check_pin_status, "button", 3072, NULL,5,NULL );
-
-            // size_t ssid_size = 32;
-            // char* ssid = malloc(ssid_size);
-            // nvs_get_str("wifi_ssid")
+            app_main2();
+            /*
             int count = 0;
             while (true)
             {
@@ -801,6 +778,7 @@ void app_main(void)
                 vTaskDelay(5000 / portTICK_PERIOD_MS);
                 count++;
             }
+            */
         } else {
             ESP_LOGI(MESH_TAG, "El dispositivo no ha sido configurado");
             ESP_LOGI(MESH_TAG, "Iniciando el webserver");

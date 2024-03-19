@@ -1,3 +1,4 @@
+#include <ctype.h>
 #include <stdio.h>
 #include <string.h>
 #include <esp_log.h>
@@ -16,7 +17,7 @@ static const char *TAG = "app_wifi";
 
 const int WIFI_CONNECTED_EVENT = BIT0;
 static EventGroupHandle_t wifi_event_group;
-typedef void (ConfigCallback)(char* ssid, char* password, char* mesh_name, char* email);
+typedef void (ConfigCallback)(char* ssid, uint8_t channel, char* password, char* mesh_name, char* email);
 
 extern const uint8_t provisioning_html_start[] asm("_binary_provisioning_html_start");
 extern const uint8_t provisioning_html_end[] asm("_binary_provisioning_html_end");
@@ -25,11 +26,11 @@ typedef struct
 {
     uint16_t count;
     char **ssids;
+    uint8_t* channels;
 } wifi_scan_result_t;
 
 // Define a structure to hold extra arguments for the handler
 typedef struct {
-    int luckyNumber;
     ConfigCallback* callback;
 } handler_args_t;
 
@@ -106,7 +107,9 @@ static wifi_scan_result_t scan_networks()
     esp_wifi_scan_get_ap_num(&(result.count));
 
     result.ssids = malloc(result.count * sizeof(char *));
-    if (result.ssids == NULL)
+    result.channels = malloc(result.count * sizeof(int));
+
+    if (result.ssids == NULL || result.channels == NULL)
     {
         ESP_LOGE("scan_wifi_networks", "Failed to allocate memory for SSIDs");
         return result;
@@ -118,12 +121,16 @@ static wifi_scan_result_t scan_networks()
     {
         ESP_LOGE("scan_wifi_networks", "Failed to allocate memory for AP records");
         free(result.ssids);
+        free(result.channels);
         return result;
     }
     esp_wifi_scan_get_ap_records(&(result.count), ap_records);
     for (int i = 0; i < result.count; i++)
     {
         result.ssids[i] = strdup((char *)ap_records[i].ssid);
+        result.channels[i] = ap_records[i].primary;
+
+        ESP_LOGI("scan_wifi_networks", "ENCONTRE:....SSID: %s, Channel: %d", result.ssids[i], result.channels[i]);
     }
     free(ap_records); // Free memory for AP records
 
@@ -136,12 +143,15 @@ static esp_err_t scan_networks_handler(httpd_req_t *req)
     wifi_scan_result_t scan_result = scan_networks();
     cJSON *root = cJSON_CreateObject();
     cJSON *ssid_array = cJSON_CreateArray();
+    cJSON *channel_array = cJSON_CreateArray();
 
     for (int i = 0; i < scan_result.count; i++)
     {
         cJSON_AddItemToArray(ssid_array, cJSON_CreateString(scan_result.ssids[i]));
+        cJSON_AddItemToArray(channel_array, cJSON_CreateNumber(scan_result.channels[i]));
     }
     cJSON_AddItemToObject(root, "ssids", ssid_array);
+    cJSON_AddItemToObject(root, "channels", channel_array);
 
     char *json_str = cJSON_Print(root);
 
@@ -160,12 +170,45 @@ static esp_err_t hello_get_handler(httpd_req_t *req)
     return ESP_OK;
 }
 
+
+char* url_decode(char* input){
+    ESP_LOGI(TAG, "URL DECODE: %s", input);
+    char* output = malloc(strlen(input) + 1);
+    int i = 0, j = 0;
+    if (output == NULL) {
+        ESP_LOGE(TAG, "Failed to allocate memory for URL Decoding");
+        return NULL;
+    }
+    while (input[i]) {
+        char aux = input[i+1];
+        char aux2 = input[i+2];
+        if (input[i] == '%' && isxdigit(aux) && isxdigit(aux2)) {
+            char hex_str[3];
+            hex_str[0] = input[i + 1];
+            hex_str[1] = input[i + 2];
+            hex_str[2] = '\0';
+            int hex_value;
+            sscanf(hex_str, "%x", &hex_value);
+            output[j++] = hex_value;
+            i += 3;
+        } else if (input[i] == '+') {
+            output[j++] = ' ';
+            i++;
+        } else {
+            output[j++] = input[i++];
+        }
+    }
+    output[j] = '\0';
+    //ESP_LOGI(TAG, "URL DECODED: %s", output);
+    return output;
+}
+
+
 static esp_err_t provision_post_handler(httpd_req_t *req)
 {
     char *buf = NULL;
     size_t buf_len = req->content_len;
     int ret;
-    ESP_LOGI(TAG, "Lucky Number: %d", ((handler_args_t *)req->user_ctx)->luckyNumber);
     handler_args_t *args = (handler_args_t *)req->user_ctx;
 
     buf = malloc(buf_len + 1);
@@ -188,44 +231,61 @@ static esp_err_t provision_post_handler(httpd_req_t *req)
 
     buf[buf_len] = '\0';
 
-    char *wifi_ssid = NULL, *wifi_password = NULL, *mesh_name = NULL, *email = NULL;
+    char *wifi_ssid = NULL, *wifi_password = NULL, *mesh_name = NULL, *email = NULL, *wifi_channel = NULL;
 
     wifi_ssid = malloc(strlen(buf) + 1);
     wifi_password = malloc(strlen(buf) + 1);
     mesh_name = malloc(strlen(buf) + 1);
     email = malloc(strlen(buf) + 1);
+    wifi_channel = malloc(strlen(buf) + 1);
 
-    if (wifi_ssid == NULL || wifi_password == NULL || mesh_name == NULL || email == NULL)
+    if (wifi_ssid == NULL || wifi_password == NULL || mesh_name == NULL || email == NULL || wifi_channel == NULL)
     {
         ESP_LOGE(TAG, "Failed to allocate memory for SSID and password");
         free(wifi_ssid);
         free(wifi_password);
         free(mesh_name);
         free(email);
+        free(wifi_channel);
         return ESP_FAIL;
     }
 
     if (httpd_query_key_value(buf, "wifi_ssid", wifi_ssid, strlen(buf) + 1) == ESP_OK &&
+        httpd_query_key_value(buf, "wifi_channel", wifi_channel, strlen(buf) + 1) == ESP_OK &&
         httpd_query_key_value(buf, "wifi_password", wifi_password, strlen(buf) + 1) == ESP_OK &&
         httpd_query_key_value(buf, "mesh_name", mesh_name, strlen(buf) + 1) == ESP_OK &&
         httpd_query_key_value(buf, "email", email, strlen(buf) + 1) == ESP_OK)
     {
-        ESP_LOGI(TAG, "Received Wi-Fi SSID: %s, Password: %s, Mesh Name: %s, Email: %s", wifi_ssid, wifi_password, mesh_name, email);
+        ESP_LOGI(TAG, "Received Wi-Fi SSID: %s, Channel: %s, Password: %s, Mesh Name: %s, Email: %s", wifi_ssid, wifi_channel, wifi_password, mesh_name, email);
+        
         const char *response = "Form submitted successfully!";
         httpd_resp_send(req, response, strlen(response));
 
         // Call Callback if exists
-        // TODO
-        if (args->callback != NULL) {
-            args->callback(wifi_ssid, wifi_password, mesh_name, email);
-        }
-        
-        
+
+        char* decoded_widi_ssid = url_decode(wifi_ssid);
+        char* decoded_wifi_password = url_decode(wifi_password);
+        char* decoded_mesh_name = url_decode(mesh_name);
+        char* decoded_email = url_decode(email);
+
         free(wifi_ssid);
         free(wifi_password);
         free(mesh_name);
         free(email);
         free(buf);
+
+        ESP_LOGI(TAG, "Channel value is :%s", wifi_channel);
+        ESP_LOGI(TAG, "Channel value is :%d", atoi(wifi_channel));
+
+        if (args->callback != NULL) {
+            ESP_LOGI(TAG, "About to call callback");
+            args->callback(decoded_widi_ssid, (uint8_t) atoi(wifi_channel), decoded_wifi_password, decoded_mesh_name, decoded_email);
+        } else {
+            ESP_LOGE(TAG, "Callback is NULL");
+        }
+        
+        free(wifi_channel);
+
         return ESP_OK;
 
         // Logica de aprovisionamiento
@@ -239,11 +299,6 @@ static esp_err_t provision_post_handler(httpd_req_t *req)
     free(buf);
     return ESP_FAIL;
 }
-
-handler_args_t extra_args = {
-    .luckyNumber = 77,
-
-};
 
 static const httpd_uri_t hello = {
     .uri = "/",
@@ -281,6 +336,11 @@ esp_err_t http_404_error_handler(httpd_req_t *req, httpd_err_code_t err)
     httpd_resp_send_err(req, HTTPD_404_NOT_FOUND, "Some 404 error message");
     return ESP_FAIL;
 }
+
+handler_args_t extra_args = {
+        .callback = NULL
+    };
+
 
 static httpd_handle_t start_webserver(void* callback)
 {

@@ -56,6 +56,17 @@ persistence_err_t persistence_get_str(persistence_handler_t handler, const char 
 }
 
 
+persistence_err_t persistence_set_str(persistence_handler_t handler, const char *key, const char *value) {
+    nvs_handle_t nvs_handle = (nvs_handle_t) handler;
+    esp_err_t err = nvs_set_str(nvs_handle, key, value);
+    if (err == ESP_OK) {
+        return PERSISTENCE_OP_OK;
+    } else {
+        return PERSISTENCE_OP_FAIL;
+    }
+}
+
+
 persistence_err_t persistence_set_u8(persistence_handler_t handler, const char *key, uint8_t value) {
     nvs_handle_t nvs_handle = (nvs_handle_t) handler;
     esp_err_t err = nvs_set_u8(nvs_handle, key, value);

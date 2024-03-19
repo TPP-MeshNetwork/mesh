@@ -117,22 +117,36 @@
     <form class="form" action="/submit" method="post" id="provision-form">
       <div class="ssid-list">
         <label for="wifi_ssid">SSIDs</label>
-        <select id="wifi_ssid" name="wifi_ssid" required>
+        <select id="wifi_ssid" name="wifi_ssid" required onchange="updateChannel()">
         </select>
         <input id="spinner-button" type="button" onclick="fetchSSIDs()" value="refresh">
         <div id="spinner"></div>
       </div>
-      <div class="form">Password: <input type="password" name="wifi_password" required/><br /></div>
+      <div class="form"><input id="wifi_channel" type="hidden", name="wifi_channel" required></div>
+      <div class="form">
+        Password: <input type="password" name="wifi_password" required/><br />
+        Show Password: <input type="checkbox" name="show_password" onclick="document.getElementsByName('wifi_password')[0].type = this.checked ? 'text' : 'password'">
+      </div>
       <div class="form">Mesh Name: <input type="text" name="mesh_name" required/><br /></div>
       <div class="form"></siv>Email: <input type="text" name="email" required/><br /></div>
+      <div class="form"></div>
       <input type="submit" id="submit" value="Submit" />
     </form>
     <script>
+        function updateChannel() {
+            var select = document.getElementById("wifi_ssid");
+            var channelElement = document.getElementById("wifi_channel");
+            var channel = select.options[select.selectedIndex].dataset.channel;
+            channelElement.value = channel;
+            console.log("Seteo channel: " + channel);
+        }
+
         function fetchSSIDs() {
             var select = document.getElementById("wifi_ssid");
             var form = document.getElementById("provision-form");
             var spinner = document.getElementById("spinner");
             var refreshButton = document.getElementById("spinner-button");
+            var channel_set = false;
             
             spinner.style.display = "inline-block";
             refreshButton.style.display = "none"
@@ -141,15 +155,36 @@
                 .then(response => response.json())
                 .then(data => {
                     const selectElement = document.getElementById('wifi_ssid');
+                    const channelElement = document.getElementById('wifi_channel');
                     selectElement.innerHTML = '';
-                    data.ssids.forEach(ssid => {
+                    data.ssids.forEach((ssid, index) => {
                         const option = document.createElement('option');
                         option.value = ssid;
                         option.textContent = ssid;
+                        option.dataset.channel = data.channels[index];
                         selectElement.appendChild(option);
+                        // By default the select input takes the first value. If by any chance
+                        // that's the one the user wants, we must have already defined
+                        // the channel.
+                        if (!channel_set) {
+                            channelElement.value = data.channels[index];
+                            channel_set = true;
+                        }
                     });
                     spinner.style.display = "none";
                     refreshButton.style.display = "inline-block";
+                    /*
+                    selectElement.addEventListener('change', function() {
+                      var channel = selectElement.options[selectElement.selectedIndex].dataset.channel;
+                      if (channel) {
+                        var hiddenInput = document.createElement('input');
+                        hiddenInput.type = 'hidden';
+                        hiddenInput.name = 'wifi_channel';
+                        hiddenInput.value = channel;
+                        form.appendChild(hiddenInput);
+                      }
+                    })
+                    */
                 })
                 .catch(error => {
                     console.error('Error fetching network list:', error);
@@ -160,6 +195,7 @@
             event.preventDefault();
 
             var ssid = document.getElementById('wifi_ssid').value;
+            var channel = document.getElementById('wifi_channel').value;
             var password = document.getElementsByName('wifi_password')[0].value;
             var mesh_name = document.getElementsByName('mesh_name')[0].value;
             var email = document.getElementsByName('email')[0].value;
@@ -176,7 +212,7 @@
                     }
                 }
             };
-            xhr.send('wifi_ssid=' + encodeURIComponent(ssid) + '&wifi_password=' + encodeURIComponent(password) + "&mesh_name=" + encodeURIComponent(mesh_name) + "&email=" + encodeURIComponent(email));
+            xhr.send('wifi_ssid=' + encodeURIComponent(ssid) + '&wifi_channel='+ encodeURIComponent(channel) + '&wifi_password=' + encodeURIComponent(password) + "&mesh_name=" + encodeURIComponent(mesh_name) + "&email=" + encodeURIComponent(email));
         });
 
         document.addEventListener('DOMContentLoaded', fetchSSIDs);
