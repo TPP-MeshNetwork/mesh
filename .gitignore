@@ -12,7 +12,6 @@ build
 build_esp*_*/
 sdkconfig
 sdkconfig.old
-partitions.csv
 .devcontainer/*
 
 .config

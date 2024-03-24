@@ -201,6 +201,34 @@ void task_mesh_table_routing(void *args) {
     vTaskDelete(NULL);
 }
 
+
+void task_notify_new_device_id(void *args) {
+    ESP_LOGI(MESH_TAG, "STARTED: task_notify_new_device_id");
+    mqtt_queues_t *mqtt_queues = (mqtt_queues_t *) args;
+    char *device_id_msg;
+
+    char * device_topic = create_topic("devices", "report", true);
+
+    while (1) {
+        uint8_t macAp[6];
+        esp_wifi_get_mac(WIFI_IF_AP, macAp);
+        asprintf(&device_id_msg, "{\"mesh_id\": \"%s\", \"device_id\": \"" MACSTR "\"}", MESH_TAG, MAC2STR(macAp));
+
+        ESP_LOGI(MESH_TAG, "Trying to queue message: %s", device_id_msg);
+        if (mqtt_queues->mqttPublisherQueue != NULL) {
+            publish(mqtt_queues->mqttPublisherQueue, device_topic, device_id_msg);
+            ESP_LOGI(MESH_TAG, "queued done: %s", device_id_msg);
+        }
+        free(device_id_msg);
+        
+
+        vTaskDelay(pdMS_TO_TICKS(60000));
+    }
+    free(device_topic);
+    vTaskDelete(NULL);
+}
+
+
 void task_mqtt_graph(void *args) {
     ESP_LOGI(MESH_TAG, "STARTED: task_mqtt_graph");
 
@@ -346,6 +374,7 @@ esp_err_t esp_tasks_runner(void) {
         xTaskCreate(task_mesh_table_routing, "mqtt routing-table", 3072, NULL, 5, NULL);
         xTaskCreate(task_read_sensor_dh11, "Read sensor data from sensor", 3072, (void *)mqtt_queues, 5, NULL);
         xTaskCreate(task_mqtt_graph, "Graph logging task", 3072, (void *)mqtt_queues, 5, NULL);
+        xTaskCreate(task_notify_new_device_id, "Notify new device in mesh", 3072, (void *)mqtt_queues, 5, NULL);
         // xTaskCreate(esp_mesh_task_mqtt_keepalive, "Keepalive task", 3072, NULL, 5, NULL);
         is_comm_mqtt_task_started = true;
     }
