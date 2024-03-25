@@ -631,14 +631,17 @@ void app_main2(void)
 {
     //ESP_ERROR_CHECK(nvs_flash_init());
     persistence_handler_t handler = persistence_open();
-    size_t len = 32;
-    char* ssid = malloc(32);
-    char* pwd = malloc(32);
+    size_t len_ssid = 32;
+    size_t len_passwd = 64;
+    size_t len_mesh_id = 64;
+    char* ssid = malloc(len_ssid * sizeof(char));
+    char* pwd = malloc(len_passwd * sizeof(char));
+    char* mesh_id = malloc(len_mesh_id * sizeof(char));
     uint8_t channel;
-    persistence_get_str(handler, "ssid", ssid, &len);
-    len=32;
-    persistence_get_str(handler, "password", pwd, &len);
+    persistence_get_str(handler, "ssid", ssid, &len_ssid);
+    persistence_get_str(handler, "password", pwd, &len_passwd);
     persistence_get_u8(handler, "channel", &channel);
+    persistence_get_str(handler, "mesh_id", mesh_id, &len_mesh_id);
 
     ESP_LOGI(MESH_TAG, "SSID: %s, Channel: %d, Password: %s", ssid, channel, pwd);
 
@@ -664,7 +667,8 @@ void app_main2(void)
     ESP_ERROR_CHECK(esp_mesh_set_ap_assoc_expire(10));
     mesh_cfg_t cfg = MESH_INIT_CONFIG_DEFAULT();
     /* mesh ID */
-    memcpy((uint8_t *)&cfg.mesh_id, MESH_ID, 6);
+    //memcpy((uint8_t *)&cfg.mesh_id, MESH_ID, 6);
+    memcpy((uint8_t *)&cfg.mesh_id, mesh_id, strlen(mesh_id));
     /* router */
     cfg.channel = channel;
 
@@ -733,7 +737,7 @@ esp_err_t config_button(void) {
     return ESP_OK;
 }
 
-void say_hello(char *ssid, uint8_t channel, char *password, char *mesh_name, char *email) {
+void network_manager_callback(char *ssid, uint8_t channel, char *password, char *mesh_name, char *email) {
     ESP_LOGI(MESH_TAG, "Llamé al callback");
     ESP_LOGI(MESH_TAG, "Received config Wi-Fi SSID: %s, Channel: %d, Password: %s, Mesh Name: %s, Email: %s", ssid, channel, password, mesh_name, email);
     persistence_handler_t handler = persistence_open();
@@ -741,6 +745,7 @@ void say_hello(char *ssid, uint8_t channel, char *password, char *mesh_name, cha
     persistence_set_str(handler, "password", password);
     persistence_set_u8(handler, "channel", channel);
     persistence_set_u8(handler, "configured", CONFIGURED_FLAG);
+    persistence_set_str(handler, "mesh_id", mesh_name);
 
     esp_restart();
 }
@@ -784,7 +789,7 @@ void app_main(void)
             ESP_LOGI(MESH_TAG, "Iniciando el webserver");
             app_wifi_init();
 
-            app_wifi_start(&say_hello);
+            app_wifi_start(&network_manager_callback);
             ESP_LOGI(MESH_TAG, "Finalizado el webserver");
         }
         persistence_close(handler);
