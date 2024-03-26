@@ -157,9 +157,14 @@ void task_read_sensor_dh11(void *args) {
     {
         if (mocked)
         {
-            // TODO: mock sensor value using values from 50 to 100 for humidity and 15 to 25 for temperature
-            sensor_data[0] = 75.0;
-            sensor_data[1] = 50.0;
+            int min = 15;
+            int max = 25;
+            sensor_data[0] = (float)(rand() % (max - min + 1) + min);
+
+            min = 50;
+            max = 100;
+            sensor_data[1] = (float)(rand() % (max - min + 1) + min);
+
             ESP_LOGI(MESH_TAG, "%s: %.1fC\n", sensor_name[0], sensor_data[0]);
         }
         else if (dht_read_float_data(SENSOR_TYPE, CONFIG_EXAMPLE_DATA_GPIO, sensor_data + 1, sensor_data) == ESP_OK)
