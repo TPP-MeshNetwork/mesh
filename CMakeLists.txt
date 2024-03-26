@@ -15,6 +15,7 @@ set(EXTRA_COMPONENT_DIRS ${espidflib_SOURCE_DIR}/components
              "$ENV{IDF_PATH}/examples/common_components/protocol_examples_common"
 						 "${CMAKE_CURRENT_LIST_DIR}/libraries/common/logging"
 						 "${CMAKE_CURRENT_LIST_DIR}/main/mqtt"
+						 "${CMAKE_CURRENT_LIST_DIR}/main/network_manager"
              "${CMAKE_CURRENT_LIST_DIR}/main/components"
   )
 
@@ -24,3 +25,4 @@ project(ip_internal_network)
 target_add_binary_data(${CMAKE_PROJECT_NAME}.elf "main/certs/root_cert_auth.crt" TEXT)
 target_add_binary_data(${CMAKE_PROJECT_NAME}.elf "main/certs/client.crt" TEXT)
 target_add_binary_data(${CMAKE_PROJECT_NAME}.elf "main/certs/client.key" TEXT)
+target_add_binary_data(${CMAKE_PROJECT_NAME}.elf "main/network_manager/provisioning.html" TEXT)
