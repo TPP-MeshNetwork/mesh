@@ -410,9 +410,9 @@ esp_err_t app_wifi_init(void)
         .ap = {
             .ssid = "admin-milos",
             .ssid_len = strlen("admin-milos"),
-            .password = "admin-milos",
             .max_connection = 4,
-            .authmode = WIFI_AUTH_WPA_WPA2_PSK},
+            .authmode = WIFI_AUTH_OPEN
+        },
     };
 
     ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_APSTA));
