@@ -41,7 +41,7 @@
 #define RST_BTN 13
 #define UNCONFIGURED_FLAG 0
 #define CONFIGURED_FLAG 1
-static char* MESH_ID = "eli_mesh";
+static char *MESH_ID = "esp32-mesh";
 
 /*******************************************************
  *                Variable Definitions for Mesh
@@ -55,7 +55,6 @@ static int s_route_table_size = 0;
 static SemaphoreHandle_t s_route_table_lock = NULL;
 static uint8_t s_mesh_tx_payload[CONFIG_MESH_ROUTE_TABLE_SIZE * 6 + 1];
 /*For button pressing*/
-static TickType_t ticks_from_start = 0;
 static unsigned long int last_time = 0;
 static bool last_status_is_pressed = true;
 
@@ -223,7 +222,7 @@ void task_notify_new_device_id(void *args) {
     mqtt_queues_t *mqtt_queues = (mqtt_queues_t *) args;
     char *device_id_msg;
 
-    char * device_topic = create_topic("devices", "report", true);
+    char * device_topic = create_topic("devices", "report", false);
 
     while (1) {
         uint8_t macAp[6];
@@ -233,12 +232,10 @@ void task_notify_new_device_id(void *args) {
         ESP_LOGI(MESH_ID, "Trying to queue message: %s", device_id_msg);
         if (mqtt_queues->mqttPublisherQueue != NULL) {
             publish(mqtt_queues->mqttPublisherQueue, device_topic, device_id_msg);
-            ESP_LOGI(MESH_ID, "queued done: %s", device_id_msg);
+            ESP_LOGI(MESH_ID, "queued done: %s - %s", device_topic, device_id_msg);
         }
         free(device_id_msg);
-        
-
-        vTaskDelay(pdMS_TO_TICKS(60000));
+        vTaskDelay(60 * 1000 / portTICK_PERIOD_MS);
     }
     free(device_topic);
     vTaskDelete(NULL);
@@ -283,7 +280,7 @@ void task_mqtt_graph(void *args) {
         if (mqtt_queues->mqttPublisherQueue != NULL)
         {
             publish(mqtt_queues->mqttPublisherQueue, topic, message);
-            ESP_LOGI(MESH_ID, "queued done: %s", message);
+            ESP_LOGI(MESH_ID, "queued done: %s - %s", topic, message);
         }
         free(graph_message);
         free(message);
