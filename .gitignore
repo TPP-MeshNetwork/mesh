@@ -25,3 +25,4 @@ main/certificates
 
 # VSCode
 .vscode/*
+sdkconfig.defaults
