@@ -43,7 +43,7 @@
 #define CONFIGURED_FLAG 1
 static char * MESH_TAG = "esp32-mesh";
 // MESH ID must be a 6-byte array to identify the mesh network and its created from the first 6 bytes of the MESH_TAG
-static const uint8_t MESH_ID[6] = { 0x65, 0x73, 0x70, 0x33, 0x32, 0x2D};
+static uint8_t MESH_ID[6] = { 0x65, 0x73, 0x70, 0x33, 0x32, 0x2D};
 
 /*******************************************************
  *                Variable Definitions for Mesh
@@ -73,15 +73,13 @@ void static recv_cb(mesh_addr_t *from, mesh_data_t *data) {
     if (data->data[0] == CMD_ROUTE_TABLE)
     {
         int size = data->size - 1;
-        if (s_route_table_lock == NULL || size % 6 != 0)
-        {
+        if (s_route_table_lock == NULL || size % 6 != 0) {
             ESP_LOGE(MESH_TAG, "Error in receiving raw mesh data: Unexpected size");
             return;
         }
         xSemaphoreTake(s_route_table_lock, portMAX_DELAY);
         s_route_table_size = size / 6;
-        for (int i = 0; i < s_route_table_size; ++i)
-        {
+        for (int i = 0; i < s_route_table_size; ++i) {
             ESP_LOGI(MESH_TAG, "Received Routing table [%d] " MACSTR, i, MAC2STR(data->data + 6 * i + 1));
         }
         memcpy(&s_route_table, data->data + 1, size);
@@ -614,7 +612,15 @@ void ip_event_handler(void *arg, esp_event_base_t event_base,
 #endif
 
     /* Before running the tasks we should try to sync with NTP*/
-    esp_sntp_config_t config = ESP_NETIF_SNTP_DEFAULT_CONFIG("pool.ntp.org");
+    esp_sntp_config_t config = ESP_NETIF_SNTP_DEFAULT_CONFIG_MULTIPLE(2,
+                           ESP_SNTP_SERVER_LIST("time.windows.com", "pool.ntp.org" ) );
+    config.start = true;                       // start the SNTP service explicitly (after connecting)
+    config.server_from_dhcp = true;             // accept the NTP offers from DHCP server
+    config.renew_servers_after_new_IP = true;   // let esp-netif update the configured SNTP server(s) after receiving the DHCP lease
+    config.index_of_first_server = 1;           // updates from server num 1, leaving server 0 (from DHCP) intact
+    config.ip_event_to_renew = IP_EVENT_STA_GOT_IP;  // IP event on which we refresh the configuration
+
+
     esp_netif_sntp_init(&config);
     if (esp_netif_sntp_sync_wait(pdMS_TO_TICKS(10000)) != ESP_OK)
     {
@@ -637,7 +643,18 @@ void app_start(void) {
     persistence_get_u8(handler, "channel", &channel);
     persistence_get_str(handler, "MESH_TAG", MESH_TAG, &len_MESH_TAG);
 
-    ESP_LOGI(MESH_TAG, "SSID: %s, Channel: %d, Password: %s", ssid, channel, pwd);
+    ESP_LOGI(MESH_TAG, "SSID: %s, Channel: %d", ssid, channel);
+
+    // copy the first chars converting as uint8 from mesh_tag to MESH_TAG
+    for (int i = 0; i < strlen(MESH_TAG); i++){
+        MESH_ID[i] = MESH_TAG[i];
+    }
+    if (strlen(MESH_TAG) < 6) {
+        // repeat the last char until reach 6
+        for (int i = strlen(MESH_TAG); i < 6; i++) {
+            MESH_ID[i] = MESH_TAG[strlen(MESH_TAG)];
+        }
+    }
 
     /*  tcpip initialization */
     ESP_ERROR_CHECK(esp_netif_init());
@@ -662,16 +679,6 @@ void app_start(void) {
     mesh_cfg_t cfg = MESH_INIT_CONFIG_DEFAULT();
 
     /* mesh ID */
-    // copy the first chars converting as uint8 from mesh_tag to MESH_TAG
-    for (int i = 0; i < strlen(MESH_TAG); i++){
-        MESH_TAG[i] = MESH_TAG[i];
-    }
-    if (strlen(MESH_TAG) < 6) {
-        // repeat the last char until reach 6
-        for (int i = strlen(MESH_TAG); i < 6; i++) {
-            MESH_TAG[i] = MESH_TAG[strlen(MESH_TAG)];
-        }
-    }
     memcpy((uint8_t *) &cfg.mesh_id, MESH_ID, 6);
 
     /* router */
