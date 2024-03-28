@@ -408,6 +408,7 @@ esp_err_t app_wifi_init(void)
     ESP_ERROR_CHECK(esp_wifi_init(&cfg));
     wifi_config_t conf = {
         .ap = {
+            .password = "admin-milos",
             .ssid = "admin-milos",
             .ssid_len = strlen("admin-milos"),
             .max_connection = 4,
