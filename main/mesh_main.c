@@ -57,7 +57,6 @@ static int s_route_table_size = 0;
 static SemaphoreHandle_t s_route_table_lock = NULL;
 static uint8_t s_mesh_tx_payload[CONFIG_MESH_ROUTE_TABLE_SIZE * 6 + 1];
 /*For button pressing*/
-static TickType_t ticks_from_start = 0;
 static unsigned long int last_time = 0;
 static bool last_status_is_pressed = true;
 
@@ -169,8 +168,7 @@ void task_read_sensor_dh11(void *args) {
         {
             ESP_LOGI(MESH_TAG, "%s: %.1fC\n", sensor_name[0], sensor_data[0]);
         }
-        else
-        {
+        else {
             // stopping reading sensor if it fails too many times
             tries++;
             if (tries > max_tries)
@@ -180,9 +178,7 @@ void task_read_sensor_dh11(void *args) {
             continue;
         }
 
-        for (size_t i = 0; i < sensor_length; i++)
-        {
-
+        for (size_t i = 0; i < sensor_length; i++) {
             asprintf(&sensor_message, " \"sensor_type\": \"%s\", \"sensor_value\": %.1f ", sensor_name[i], sensor_data[i]);
             char *message = create_message(sensor_message);
 
@@ -208,10 +204,8 @@ void task_mesh_table_routing(void *args) {
     is_running = true;
     mesh_data_t data;
     esp_err_t err;
-    while (is_running)
-    {
-        if (esp_mesh_is_root())
-        {
+    while (is_running) {
+        if (esp_mesh_is_root()) {
             esp_mesh_get_routing_table((mesh_addr_t *)&s_route_table,
                                        CONFIG_MESH_ROUTE_TABLE_SIZE * 6, &s_route_table_size);
             data.size = s_route_table_size * 6 + 1;
@@ -220,8 +214,7 @@ void task_mesh_table_routing(void *args) {
             s_mesh_tx_payload[0] = CMD_ROUTE_TABLE;
             memcpy(s_mesh_tx_payload + 1, s_route_table, s_route_table_size * 6);
             data.data = s_mesh_tx_payload;
-            for (int i = 0; i < s_route_table_size; i++)
-            {
+            for (int i = 0; i < s_route_table_size; i++) {
                 err = esp_mesh_send(&s_route_table[i], &data, MESH_DATA_P2P, NULL, 0);
                 ESP_LOGI(MESH_TAG, "Sending routing table to [%d] " MACSTR ": sent with err code: %d", i, MAC2STR(s_route_table[i].addr), err);
             }
@@ -230,6 +223,47 @@ void task_mesh_table_routing(void *args) {
     }
     vTaskDelete(NULL);
 }
+
+void concatenateSensorNames(const char *sensor_name[], int size, char result[]) {
+    for (int i = 0; i < size; i++) {
+        strcat(result, "\"");
+        strcat(result, sensor_name[i]);
+        strcat(result, "\", ");
+    }
+
+    // Remove the trailing comma and space
+    if (strlen(result) >= 2) {
+        result[strlen(result) - 2] = '\0';
+    }
+}
+
+void task_notify_new_device_id(void *args) {
+    ESP_LOGI(MESH_TAG, "STARTED: task_notify_new_device_id");
+    mqtt_queues_t *mqtt_queues = (mqtt_queues_t *) args;
+    char *device_id_msg;
+
+    char * device_topic = create_topic("devices", "report", false);
+    const char *sensor_name[2] = {"temperature", "humidity"};
+    char result[100] = ""; // Initialize result string
+
+    while (1) {
+        uint8_t macAp[6];
+        esp_wifi_get_mac(WIFI_IF_AP, macAp);
+        concatenateSensorNames(sensor_name, sizeof(sensor_name) / sizeof(sensor_name[0]), result);
+        asprintf(&device_id_msg, "{\"mesh_id\": \"%s\", \"device_id\": \"" MACSTR "\", \"metrics\": [%s]}", MESH_TAG, MAC2STR(macAp), result);
+
+        ESP_LOGI(MESH_TAG, "Trying to queue message: %s", device_id_msg);
+        if (mqtt_queues->mqttPublisherQueue != NULL) {
+            publish(mqtt_queues->mqttPublisherQueue, device_topic, device_id_msg);
+            ESP_LOGI(MESH_TAG, "queued done: %s - %s", device_topic, device_id_msg);
+        }
+        free(device_id_msg);
+        vTaskDelay(24 * 3600 * 1000 / portTICK_PERIOD_MS);
+    }
+    free(device_topic);
+    vTaskDelete(NULL);
+}
+
 
 void task_mqtt_graph(void *args) {
     ESP_LOGI(MESH_TAG, "STARTED: task_mqtt_graph");
@@ -251,12 +285,10 @@ void task_mqtt_graph(void *args) {
 
     char * topic = create_topic("graph", "report", false);
 
-    while (is_running)
-    {
+    while (is_running) {
         log_perfdata(); // for debugging memory leaks
 
-        if (esp_mesh_is_root())
-        {
+        if (esp_mesh_is_root()) {
             // the root node has no parent so instead we get the WIFI_IF_AP -> WIFI_IF_STA
             asprintf(&graph_message, "\"layer\": %d, \"root\": true, \"macSta\": \"" MACSTR "\", \"macSoftap\": \"" MACSTR "\"", esp_mesh_get_layer(), MAC2STR(macSta), MAC2STR(macAp));
         }
@@ -387,6 +419,7 @@ esp_err_t esp_tasks_runner(void) {
         xTaskCreate(task_mqtt_client_start, "mqtt task-aws", 7168, (void *)mqtt_queues, 5, NULL);
         xTaskCreate(task_read_sensor_dh11, "Read sensor data from sensor", 3072, (void *)mqtt_queues, 5, NULL);
         xTaskCreate(task_mqtt_graph, "Graph logging task", 3072, (void *)mqtt_queues, 5, NULL);
+        xTaskCreate(task_notify_new_device_id, "Notify new device in mesh", 3072, (void *)mqtt_queues, 5, NULL);
         // xTaskCreate(esp_mesh_task_mqtt_keepalive, "Keepalive task", 3072, NULL, 5, NULL);
         is_comm_mqtt_task_started = true;
     }
@@ -614,11 +647,11 @@ void ip_event_handler(void *arg, esp_event_base_t event_base,
     /* Before running the tasks we should try to sync with NTP*/
     esp_sntp_config_t config = ESP_NETIF_SNTP_DEFAULT_CONFIG_MULTIPLE(2,
                            ESP_SNTP_SERVER_LIST("time.windows.com", "pool.ntp.org" ) );
-    config.start = true;                       // start the SNTP service explicitly (after connecting)
-    config.server_from_dhcp = true;             // accept the NTP offers from DHCP server
-    config.renew_servers_after_new_IP = true;   // let esp-netif update the configured SNTP server(s) after receiving the DHCP lease
-    config.index_of_first_server = 1;           // updates from server num 1, leaving server 0 (from DHCP) intact
-    config.ip_event_to_renew = IP_EVENT_STA_GOT_IP;  // IP event on which we refresh the configuration
+    // config.start = true;                       // start the SNTP service explicitly (after connecting)
+    // config.server_from_dhcp = true;             // accept the NTP offers from DHCP server
+    // config.renew_servers_after_new_IP = true;   // let esp-netif update the configured SNTP server(s) after receiving the DHCP lease
+    // config.index_of_first_server = 1;           // updates from server num 1, leaving server 0 (from DHCP) intact
+    // config.ip_event_to_renew = IP_EVENT_STA_GOT_IP;  // IP event on which we refresh the configuration
 
 
     esp_netif_sntp_init(&config);
