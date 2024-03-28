@@ -258,7 +258,7 @@ void task_notify_new_device_id(void *args) {
             ESP_LOGI(MESH_TAG, "queued done: %s - %s", device_topic, device_id_msg);
         }
         free(device_id_msg);
-        vTaskDelay(24 * 3600);
+        vTaskDelay(24 * 3600 * 1000 / portTICK_PERIOD_MS);
     }
     free(device_topic);
     vTaskDelete(NULL);
