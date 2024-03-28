@@ -3,13 +3,14 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Provisioning Form</title>
     <style>
-        html{
-            height: 100vh;
-        }
+      html{
+          height: 100vh;
+      }
       body {
         display: flex;
         flex-direction: column;
         align-items: center;
+        justify-content: center;
         font-family: Arial, sans-serif;
         background-image: linear-gradient(180deg,#141b2d,#0c3653);
         color: white;
@@ -25,7 +26,7 @@
         align-items: center;
       }
       .form {
-        padding-top: 2em;
+        padding-top: 15px;
       }
       form {
         max-width: 300px;
@@ -40,6 +41,20 @@
         padding: 10px;
         margin: 5px 0;
       }
+
+      .password-toggle {
+        position: relative;
+        display: flex;
+        align-items: center;
+        flex-direction: row;
+      }
+
+      .password-toggle svg {
+        position: absolute;
+        right: 10px;
+        cursor: pointer;
+      }
+
       input[type="submit"], input[type="button"]{
         width: 100%;
         padding: 10px;
@@ -69,20 +84,20 @@
         animation: rotation 1s linear infinite;
         padding: 1em;
         display: none;
-} 
-    #spinner::after {
-    content: '';  
-    box-sizing: border-box;
-    position: absolute;
-    left: 50%;
-    top: 50%;
-    transform: translate(-50%, -50%);
-    width: 56px;
-    height: 56px;
-    border-radius: 50%;
-    border: 3px solid transparent;
-    border-bottom-color: #FF3D00;
-    }
+      } 
+      #spinner::after {
+        content: '';  
+        box-sizing: border-box;
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        transform: translate(-50%, -50%);
+        width: 56px;
+        height: 56px;
+        border-radius: 50%;
+        border: 3px solid transparent;
+        border-bottom-color: #FF3D00;
+      }
 
     @keyframes rotation {
     0% {
@@ -110,13 +125,13 @@
           <circle cx="-42" cy="52" r="10" stroke="#7e22da" stroke-width="5" fill="none"/>
         </g>
         <text x="226.25" y="45" font-size="40" font-weight="bold" fill="white">S</text>
-      </svg>
+    </svg>
     </div>
     <h2>Provisioning Device</h2>
 
     <form class="form" action="/submit" method="post" id="provision-form">
+      <label for="wifi_ssid">Select an SSID</label>
       <div class="ssid-list">
-        <label for="wifi_ssid">SSIDs</label>
         <select id="wifi_ssid" name="wifi_ssid" required onchange="updateChannel()">
         </select>
         <input id="spinner-button" type="button" onclick="fetchSSIDs()" value="refresh">
@@ -124,21 +139,34 @@
       </div>
       <div class="form"><input id="wifi_channel" type="hidden", name="wifi_channel" required></div>
       <div class="form">
-        Password: <input type="password" name="wifi_password" required/><br />
-        Show Password: <input type="checkbox" name="show_password" onclick="document.getElementsByName('wifi_password')[0].type = this.checked ? 'text' : 'password'">
+        Password
+        <div class="password-toggle">
+          <input type="password" name="wifi_password" id="password-field" required/>
+          <svg id="visibility-icon" focusable="false" aria-hidden="true" viewBox="0 0 24 24" width="20" height="20" data-testid="VisibilityIcon">
+            <path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z"></path>
+          </svg>
+        </div>
       </div>
-      <div class="form">Mesh Name: <input type="text" name="mesh_name" required/><br /></div>
-      <div class="form"></siv>Email: <input type="text" name="email" required/><br /></div>
+      <div class="form">Mesh Name <input type="text" name="mesh_name" required/><br /></div>
+      <div class="form"></siv>Email <input type="text" name="email" required/><br /></div>
       <div class="form"></div>
       <input type="submit" id="submit" value="Submit" />
     </form>
     <script>
+
+        const visibilityIcon = document.getElementById('visibility-icon');
+        const passwordField = document.getElementById('password-field');
+
+        visibilityIcon.addEventListener('click', function () {
+          const type = passwordField.getAttribute('type') === 'password' ? 'text' : 'password';
+          passwordField.setAttribute('type', type);
+        });
         function updateChannel() {
             var select = document.getElementById("wifi_ssid");
             var channelElement = document.getElementById("wifi_channel");
             var channel = select.options[select.selectedIndex].dataset.channel;
             channelElement.value = channel;
-            console.log("Seteo channel: " + channel);
+            console.log("setting channel: " + channel);
         }
 
         function fetchSSIDs() {
