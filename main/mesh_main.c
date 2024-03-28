@@ -224,17 +224,33 @@ void task_mesh_table_routing(void *args) {
     vTaskDelete(NULL);
 }
 
+void concatenateSensorNames(const char *sensor_name[], int size, char result[]) {
+    for (int i = 0; i < size; i++) {
+        strcat(result, "\"");
+        strcat(result, sensor_name[i]);
+        strcat(result, "\", ");
+    }
+
+    // Remove the trailing comma and space
+    if (strlen(result) >= 2) {
+        result[strlen(result) - 2] = '\0';
+    }
+}
+
 void task_notify_new_device_id(void *args) {
     ESP_LOGI(MESH_TAG, "STARTED: task_notify_new_device_id");
     mqtt_queues_t *mqtt_queues = (mqtt_queues_t *) args;
     char *device_id_msg;
 
     char * device_topic = create_topic("devices", "report", false);
+    const char *sensor_name[2] = {"temperature", "humidity"};
+    char result[100] = ""; // Initialize result string
 
     while (1) {
         uint8_t macAp[6];
         esp_wifi_get_mac(WIFI_IF_AP, macAp);
-        asprintf(&device_id_msg, "{\"mesh_id\": \"%s\", \"device_id\": \"" MACSTR "\"}", MESH_TAG, MAC2STR(macAp));
+        concatenateSensorNames(sensor_name, sizeof(sensor_name) / sizeof(sensor_name[0]), result);
+        asprintf(&device_id_msg, "{\"mesh_id\": \"%s\", \"device_id\": \"" MACSTR "\", \"metrics\": [%s]}", MESH_TAG, MAC2STR(macAp), result);
 
         ESP_LOGI(MESH_TAG, "Trying to queue message: %s", device_id_msg);
         if (mqtt_queues->mqttPublisherQueue != NULL) {
@@ -631,11 +647,11 @@ void ip_event_handler(void *arg, esp_event_base_t event_base,
     /* Before running the tasks we should try to sync with NTP*/
     esp_sntp_config_t config = ESP_NETIF_SNTP_DEFAULT_CONFIG_MULTIPLE(2,
                            ESP_SNTP_SERVER_LIST("time.windows.com", "pool.ntp.org" ) );
-    config.start = true;                       // start the SNTP service explicitly (after connecting)
-    config.server_from_dhcp = true;             // accept the NTP offers from DHCP server
-    config.renew_servers_after_new_IP = true;   // let esp-netif update the configured SNTP server(s) after receiving the DHCP lease
-    config.index_of_first_server = 1;           // updates from server num 1, leaving server 0 (from DHCP) intact
-    config.ip_event_to_renew = IP_EVENT_STA_GOT_IP;  // IP event on which we refresh the configuration
+    // config.start = true;                       // start the SNTP service explicitly (after connecting)
+    // config.server_from_dhcp = true;             // accept the NTP offers from DHCP server
+    // config.renew_servers_after_new_IP = true;   // let esp-netif update the configured SNTP server(s) after receiving the DHCP lease
+    // config.index_of_first_server = 1;           // updates from server num 1, leaving server 0 (from DHCP) intact
+    // config.ip_event_to_renew = IP_EVENT_STA_GOT_IP;  // IP event on which we refresh the configuration
 
 
     esp_netif_sntp_init(&config);
