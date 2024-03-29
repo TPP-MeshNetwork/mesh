@@ -250,7 +250,7 @@ void task_notify_new_device_id(void *args) {
         uint8_t macAp[6];
         esp_wifi_get_mac(WIFI_IF_AP, macAp);
         concatenateSensorNames(sensor_name, sizeof(sensor_name) / sizeof(sensor_name[0]), result);
-        asprintf(&device_id_msg, "{\"mesh_id\": \"%s\", \"device_id\": \"" MACSTR "\", \"metrics\": [%s]}", MESH_TAG, MAC2STR(macAp), result);
+        asprintf(&device_id_msg, "{\"mesh_id\": \"%s\", \"device_id\": \"" MACSTR "\", \"sensor_metrics\": [%s]}", MESH_TAG, MAC2STR(macAp), result);
 
         ESP_LOGI(MESH_TAG, "Trying to queue message: %s", device_id_msg);
         if (mqtt_queues->mqttPublisherQueue != NULL) {
