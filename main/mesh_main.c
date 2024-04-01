@@ -45,6 +45,7 @@ static char * MESH_TAG = "esp32-mesh";
 // MESH ID must be a 6-byte array to identify the mesh network and its created from the first 6 bytes of the MESH_TAG
 static uint8_t MESH_ID[6] = { 0x65, 0x73, 0x70, 0x33, 0x32, 0x2D};
 
+
 /*******************************************************
  *                Variable Definitions for Mesh
  *******************************************************/
@@ -353,14 +354,22 @@ void task_mqtt_client_start(void *args) {
 
     ESP_LOGI(MESH_TAG, "STARTED: task_mqtt_client_start");
 
-    int mqtt_connection_status = start_mqtt_connection(&mqttContext, &xNetworkContext);
-    while (1)
-    {
+    uint8_t macSta[6];
+    esp_wifi_get_mac(WIFI_IF_STA, macSta);
+    char * clientIdentifier = malloc(18 * sizeof(char));
+    sprintf(clientIdentifier, MACSTR, MAC2STR(macSta));
 
-        while (mqtt_connection_status == EXIT_FAILURE)
-        {
-            mqtt_connection_status = start_mqtt_connection(&mqttContext, &xNetworkContext);
+
+    int mqtt_connection_status = start_mqtt_connection(&mqttContext, &xNetworkContext, clientIdentifier);
+    while (1) {
+        if (mqtt_connection_status == EXIT_FAILURE) {
+            ( void ) xTlsDisconnect( &xNetworkContext );
+            mqtt_connection_status = start_mqtt_connection(&mqttContext, &xNetworkContext, clientIdentifier);
+            if (mqtt_connection_status == EXIT_SUCCESS) {
+                ESP_LOGE(MESH_TAG, "--- Reconnected to the server");
+            }
             vTaskDelay(1000 / portTICK_PERIOD_MS);
+            continue;
         }
         // read queue for messages to publish
         mqtt_message_t *buffer = malloc(sizeof(mqtt_message_t));
@@ -381,7 +390,6 @@ void task_mqtt_client_start(void *args) {
                     if (returnStatus != EXIT_SUCCESS)
                     {
                         ESP_LOGI(MESH_TAG, "Error in publishLoop");
-                        disconnectMqttSession(&mqttContext);
                         mqtt_connection_status = EXIT_FAILURE;
                     }
                 }
@@ -416,10 +424,10 @@ esp_err_t esp_tasks_runner(void) {
     {
         xTaskCreate(task_mesh_table_routing, "mqtt routing-table", 3072, NULL, 5, NULL);
         vTaskDelay(10000 / portTICK_PERIOD_MS);
-        xTaskCreate(task_mqtt_client_start, "mqtt task-aws", 7168, (void *)mqtt_queues, 5, NULL);
+        xTaskCreate(task_mqtt_client_start, "mqtt task-aws", 7168*2, (void *)mqtt_queues, 5, NULL);
         xTaskCreate(task_read_sensor_dh11, "Read sensor data from sensor", 3072, (void *)mqtt_queues, 5, NULL);
-        xTaskCreate(task_mqtt_graph, "Graph logging task", 3072, (void *)mqtt_queues, 5, NULL);
-        xTaskCreate(task_notify_new_device_id, "Notify new device in mesh", 3072, (void *)mqtt_queues, 5, NULL);
+        // xTaskCreate(task_mqtt_graph, "Graph logging task", 3072, (void *)mqtt_queues, 5, NULL);
+        // xTaskCreate(task_notify_new_device_id, "Notify new device in mesh", 3072, (void *)mqtt_queues, 5, NULL);
         // xTaskCreate(esp_mesh_task_mqtt_keepalive, "Keepalive task", 3072, NULL, 5, NULL);
         is_comm_mqtt_task_started = true;
     }

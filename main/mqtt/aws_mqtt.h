@@ -1,7 +1,7 @@
 #include "core_mqtt.h"
 #include "network_transport.h"
 
-int start_mqtt_connection(MQTTContext_t * mqttContext, NetworkContext_t * xNetworkContext);
+int start_mqtt_connection(MQTTContext_t * mqttContext, NetworkContext_t * xNetworkContext, char * clientIdentifier);
 
 /**
  * @brief Close an MQTT session by sending MQTT DISCONNECT.
