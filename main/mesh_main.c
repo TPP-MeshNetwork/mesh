@@ -155,12 +155,12 @@ void task_read_sensor_dh11(void *args) {
     {
         if (mocked)
         {
-            int min = 15;
+            int min = 20;
             int max = 25;
             sensor_data[0] = (float)(rand() % (max - min + 1) + min);
 
-            min = 50;
-            max = 100;
+            min = 70;
+            max = 95;
             sensor_data[1] = (float)(rand() % (max - min + 1) + min);
 
             ESP_LOGI(MESH_TAG, "%s: %.1fC\n", sensor_name[0], sensor_data[0]);
@@ -193,7 +193,7 @@ void task_read_sensor_dh11(void *args) {
             free(sensor_message);
         }
 
-        vTaskDelay(pdMS_TO_TICKS(5000));
+        vTaskDelay(pdMS_TO_TICKS(10000));
     }
     free(sensor_topic[0]);
     free(sensor_topic[1]);
@@ -426,8 +426,8 @@ esp_err_t esp_tasks_runner(void) {
         vTaskDelay(10000 / portTICK_PERIOD_MS);
         xTaskCreate(task_mqtt_client_start, "mqtt task-aws", 7168*2, (void *)mqtt_queues, 5, NULL);
         xTaskCreate(task_read_sensor_dh11, "Read sensor data from sensor", 3072, (void *)mqtt_queues, 5, NULL);
-        // xTaskCreate(task_mqtt_graph, "Graph logging task", 3072, (void *)mqtt_queues, 5, NULL);
-        // xTaskCreate(task_notify_new_device_id, "Notify new device in mesh", 3072, (void *)mqtt_queues, 5, NULL);
+        xTaskCreate(task_mqtt_graph, "Graph logging task", 3072, (void *)mqtt_queues, 5, NULL);
+        xTaskCreate(task_notify_new_device_id, "Notify new device in mesh", 3072, (void *)mqtt_queues, 5, NULL);
         // xTaskCreate(esp_mesh_task_mqtt_keepalive, "Keepalive task", 3072, NULL, 5, NULL);
         is_comm_mqtt_task_started = true;
     }
