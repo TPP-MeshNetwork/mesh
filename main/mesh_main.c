@@ -42,6 +42,7 @@
 #define UNCONFIGURED_FLAG 0
 #define CONFIGURED_FLAG 1
 static char * MESH_TAG = "esp32-mesh";
+static char * EMAIL = "";
 // MESH ID must be a 6-byte array to identify the mesh network and its created from the first 6 bytes of the MESH_TAG
 static uint8_t MESH_ID[6] = { 0x65, 0x73, 0x70, 0x33, 0x32, 0x2D};
 
@@ -264,6 +265,30 @@ void task_notify_new_device_id(void *args) {
     vTaskDelete(NULL);
 }
 
+void task_notify_new_user_connected(void *args) {
+    ESP_LOGI(MESH_TAG, "STARTED: task_notify_new_mesh");
+    mqtt_queues_t *mqtt_queues = (mqtt_queues_t *) args;
+    char *device_id_msg;
+
+    char * device_topic = create_topic("email", "report", false);
+
+    while (1) {
+        uint8_t macAp[6];
+        esp_wifi_get_mac(WIFI_IF_AP, macAp);
+        asprintf(&device_id_msg, "{\"mesh_id\": \"%s\", \"email\": \"%s\"}", MESH_TAG, EMAIL);
+
+        ESP_LOGI(MESH_TAG, "Trying to queue message: %s", device_id_msg);
+        if (mqtt_queues->mqttPublisherQueue != NULL) {
+            publish(mqtt_queues->mqttPublisherQueue, device_topic, device_id_msg);
+            ESP_LOGI(MESH_TAG, "queued done: %s - %s", device_topic, device_id_msg);
+        }
+        free(device_id_msg);
+        vTaskDelay(24 * 3600 * 1000 / portTICK_PERIOD_MS);
+    }
+    free(device_topic);
+    vTaskDelete(NULL);
+}
+
 
 void task_mqtt_graph(void *args) {
     ESP_LOGI(MESH_TAG, "STARTED: task_mqtt_graph");
@@ -420,6 +445,7 @@ esp_err_t esp_tasks_runner(void) {
         xTaskCreate(task_read_sensor_dh11, "Read sensor data from sensor", 3072, (void *)mqtt_queues, 5, NULL);
         xTaskCreate(task_mqtt_graph, "Graph logging task", 3072, (void *)mqtt_queues, 5, NULL);
         xTaskCreate(task_notify_new_device_id, "Notify new device in mesh", 3072, (void *)mqtt_queues, 5, NULL);
+        xTaskCreate(task_notify_new_user_connected, "Notify new user mail connected", 3072, (void *)mqtt_queues, 5, NULL);
         // xTaskCreate(esp_mesh_task_mqtt_keepalive, "Keepalive task", 3072, NULL, 5, NULL);
         is_comm_mqtt_task_started = true;
     }
@@ -667,14 +693,17 @@ void app_start(void) {
     size_t len_ssid = 32;
     size_t len_passwd = 64;
     size_t len_MESH_TAG = 64;
+    size_t len_EMAIL = 64;
     char* ssid = malloc(len_ssid * sizeof(char));
     char* pwd = malloc(len_passwd * sizeof(char));
     MESH_TAG = malloc(len_MESH_TAG * sizeof(char));
+    EMAIL = malloc(len_EMAIL * sizeof(char));
     uint8_t channel;
     persistence_get_str(handler, "ssid", ssid, &len_ssid);
     persistence_get_str(handler, "password", pwd, &len_passwd);
     persistence_get_u8(handler, "channel", &channel);
     persistence_get_str(handler, "MESH_TAG", MESH_TAG, &len_MESH_TAG);
+    persistence_get_str(handler, "EMAIL", EMAIL, &len_EMAIL);
 
     ESP_LOGI(MESH_TAG, "SSID: %s, Channel: %d", ssid, channel);
 
@@ -786,6 +815,7 @@ void network_manager_callback(char *ssid, uint8_t channel, char *password, char 
     persistence_set_u8(handler, "channel", channel);
     persistence_set_u8(handler, "configured", CONFIGURED_FLAG);
     persistence_set_str(handler, "MESH_TAG", mesh_name);
+    persistence_set_str(handler, "EMAIL", email);
 
     esp_restart();
 }
