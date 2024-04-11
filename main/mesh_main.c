@@ -108,6 +108,8 @@ char * create_topic(char* topic_type, char* topic_suffix, bool withDeviceIndicat
     char *topic;
     if (withDeviceIndicator) {
         asprintf(&topic, "/mesh/%s/device/" MACSTR "/%s/%s", MESH_TAG, MAC2STR(macAp), topic_type, topic_suffix);
+    } else if (topic_suffix == "") {
+        asprintf(&topic, "/mesh/%s/%s", MESH_TAG, topic_type);
     } else {
         asprintf(&topic, "/mesh/%s/%s/%s", MESH_TAG, topic_type, topic_suffix);
     }
@@ -270,7 +272,7 @@ void task_notify_new_user_connected(void *args) {
     mqtt_queues_t *mqtt_queues = (mqtt_queues_t *) args;
     char *device_id_msg;
 
-    char * device_topic = create_topic("email", "report", false);
+    char * device_topic = create_topic("userSync", "", false);
 
     for (int i = 0; i < 5; i++) {
         if (esp_mesh_is_root()) {
