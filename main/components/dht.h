@@ -63,6 +63,7 @@ typedef enum
     DHT_TYPE_SI7021       //!< Itead Si7021
 } dht_sensor_type_t;
 
+#define DHT11_SENSOR_COUNT 2
 /**
  * @brief Read integer data from sensor on specified pin
  *
@@ -91,6 +92,16 @@ esp_err_t dht_read_data(dht_sensor_type_t sensor_type, gpio_num_t pin,
  */
 esp_err_t dht_read_float_data(dht_sensor_type_t sensor_type, gpio_num_t pin,
         float *humidity, float *temperature);
+
+/**
+ * @brief Mock data from sensor
+ *
+ * @param sensor_data Array of sensor data
+ * @param sensor_name Array of sensor names
+ * @param sensors_count Number of sensors dh11 = 2
+ * @return Array of sensor data
+*/
+void mockDh11SensorData(float sensor_data[], const char* sensor_name[]);
 
 #ifdef __cplusplus
 }

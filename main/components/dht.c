@@ -257,3 +257,23 @@ esp_err_t dht_read_float_data(dht_sensor_type_t sensor_type, gpio_num_t pin,
 
     return ESP_OK;
 }
+
+void mockDh11SensorData(float sensor_data[], const char* sensor_name[]) {
+    float min[DHT11_SENSOR_COUNT] = {15.0f, 50.0f};
+    float max[DHT11_SENSOR_COUNT] = {25.0f, 100.0f};
+    float step[DHT11_SENSOR_COUNT] = {0.1f, 1.0f}; // Define the step sizes for each sensor
+
+    for (int i = 0; i < DHT11_SENSOR_COUNT; i++) {
+        // Generate a random number between -1 and 1
+        float change = ((float)rand() / RAND_MAX) * 2 - 1;
+        // Apply a small increment or decrement to the sensor data
+        sensor_data[i] += step[i] * change;
+
+        // Ensure the sensor data stays within the defined range
+        if (sensor_data[i] < min[i]) {
+            sensor_data[i] = min[i];
+        } else if (sensor_data[i] > max[i]) {
+            sensor_data[i] = max[i];
+        }
+    }
+}
