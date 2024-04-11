@@ -3,7 +3,7 @@
 #include <freertos/queue.h>
 typedef struct {
     QueueHandle_t mqttPublisherQueue;
-    QueueHandle_t mqttSuscriberQueue;    
+    QueueHandle_t mqttSuscriberQueue; // TODO: change subscriber to be a hash: https://troydhanson.github.io/uthash/ so the keys are the topics and the values are the queues
 } mqtt_queues_t;
 
 typedef struct {
