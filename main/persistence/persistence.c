@@ -1,6 +1,5 @@
 #include "persistence.h"
 
-
 void greet(void) {
     ESP_LOGI("PERSISTENCE", "ESTOY EN PERSISTENCE");
 }
@@ -45,14 +44,16 @@ persistence_err_t persistence_close(persistence_handler_t handler) {
 }
 
 
-persistence_err_t persistence_get_str(persistence_handler_t handler, const char *key, char *value, size_t *len) {
+persistence_err_t persistence_get_str(persistence_handler_t handler, const char *key, char **value) {
     nvs_handle_t nvs_handle = (nvs_handle_t) handler;
-    esp_err_t err = nvs_get_str(nvs_handle, key, value, len);
-    if (err == ESP_OK) {
-        return PERSISTENCE_OP_OK;
-    } else {
-        return PERSISTENCE_OP_FAIL;
-    }
+
+    size_t nvs_str_size;
+
+    esp_err_t err = nvs_get_str(nvs_handle, key, NULL, &nvs_str_size);
+    *value = (char*) malloc(nvs_str_size * sizeof(char));
+    err = nvs_get_str(nvs_handle, key, *value, &nvs_str_size);
+
+    return err == ESP_OK? PERSISTENCE_OP_OK : PERSISTENCE_OP_FAIL;
 }
 
 
