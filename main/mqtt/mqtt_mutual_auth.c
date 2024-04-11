@@ -398,7 +398,8 @@ static uint32_t generateRandomNumber();
 static int connectToServerWithBackoffRetries( NetworkContext_t * pNetworkContext,
                                               MQTTContext_t * pMqttContext,
                                               bool * pClientSessionPresent,
-                                              bool * pBrokerSessionPresent );
+                                              bool * pBrokerSessionPresent,
+                                              char * clientIdentifier );
 
 /**
  * @brief A function that uses the passed MQTT connection to
@@ -460,7 +461,7 @@ static int initializeMqtt( MQTTContext_t * pMqttContext,
  */
 static int establishMqttSession( MQTTContext_t * pMqttContext,
                                  bool createCleanSession,
-                                 bool * pSessionPresent );
+                                 bool * pSessionPresent, char * clientIdentifier );
 
 
 /**
@@ -614,10 +615,11 @@ static void cleanupESPSecureMgrCerts( NetworkContext_t * pNetworkContext )
 
 /*-----------------------------------------------------------*/
 
-static int connectToServerWithBackoffRetries( NetworkContext_t * pNetworkContext,
+int connectToServerWithBackoffRetries( NetworkContext_t * pNetworkContext,
                                               MQTTContext_t * pMqttContext,
                                               bool * pClientSessionPresent,
-                                              bool * pBrokerSessionPresent )
+                                              bool * pBrokerSessionPresent,
+                                              char * clientIdentifier )
 {
     int returnStatus = EXIT_SUCCESS;
     BackoffAlgorithmStatus_t backoffAlgStatus = BackoffAlgorithmSuccess;
@@ -729,7 +731,7 @@ static int connectToServerWithBackoffRetries( NetworkContext_t * pNetworkContext
 
             /* Sends an MQTT Connect packet using the established TLS session,
              * then waits for connection acknowledgment (CONNACK) packet. */
-            returnStatus = establishMqttSession( pMqttContext, createCleanSession, pBrokerSessionPresent );
+            returnStatus = establishMqttSession( pMqttContext, createCleanSession, pBrokerSessionPresent, clientIdentifier );
 
             if( returnStatus == EXIT_FAILURE )
             {
@@ -1137,7 +1139,7 @@ static void eventCallback( MQTTContext_t * pMqttContext,
 
 static int establishMqttSession( MQTTContext_t * pMqttContext,
                                  bool createCleanSession,
-                                 bool * pSessionPresent )
+                                 bool * pSessionPresent, char * clientIdentifier)
 {
     int returnStatus = EXIT_SUCCESS;
     MQTTStatus_t mqttStatus;
@@ -1157,8 +1159,9 @@ static int establishMqttSession( MQTTContext_t * pMqttContext,
     /* The client identifier is used to uniquely identify this MQTT client to
      * the MQTT broker. In a production device the identifier can be something
      * unique, such as a device serial number. */
-    connectInfo.pClientIdentifier = CLIENT_IDENTIFIER;
-    connectInfo.clientIdentifierLength = CLIENT_IDENTIFIER_LENGTH;
+    // client identifier is got from the unique mac addr sta
+    connectInfo.pClientIdentifier =  clientIdentifier;
+    connectInfo.clientIdentifierLength = strlen(clientIdentifier);
 
     /* The maximum time interval in seconds which is allowed to elapse
      * between two Control Packets.
@@ -1585,7 +1588,7 @@ static MQTTStatus_t processLoopWithTimeout( MQTTContext_t * pMqttContext,
 
 /*-----------------------------------------------------------*/
 
-int start_mqtt_connection(MQTTContext_t * mqttContext, NetworkContext_t * xNetworkContext) {
+int start_mqtt_connection(MQTTContext_t * mqttContext, NetworkContext_t * xNetworkContext, char * clientIdentifier) {
     int returnStatus = EXIT_SUCCESS;
     bool clientSessionPresent = false, brokerSessionPresent = false;
 
@@ -1599,7 +1602,7 @@ int start_mqtt_connection(MQTTContext_t * mqttContext, NetworkContext_t * xNetwo
              * attempts are reached or maximum timeout value is reached. The function
              * returns EXIT_FAILURE if the TCP connection cannot be established to
              * broker after configured number of attempts. */
-            returnStatus = connectToServerWithBackoffRetries( xNetworkContext, mqttContext, &clientSessionPresent, &brokerSessionPresent );
+            returnStatus = connectToServerWithBackoffRetries( xNetworkContext, mqttContext, &clientSessionPresent, &brokerSessionPresent, clientIdentifier );
 
             if( returnStatus == EXIT_FAILURE ) {
                 /* Log error to indicate connection failure after all
