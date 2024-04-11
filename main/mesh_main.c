@@ -132,6 +132,7 @@ char *create_message(char *message) {
     return new_message;
 }
 
+
 void task_read_sensor_dh11(void *args) {
     ESP_LOGI(MESH_TAG, "STARTED: task_read_sensor_dh11");
     mqtt_queues_t *mqtt_queues = (mqtt_queues_t *)args;
@@ -139,29 +140,22 @@ void task_read_sensor_dh11(void *args) {
     const int max_tries = 10;
     int tries = 0;
 
-    const char *sensor_name[2] = {"temperature", "humidity"};
+    const char *sensor_name[DHT11_SENSOR_COUNT] = {"temperature", "humidity"};
 
-    char * sensor_topic[2] = {
+    char * sensor_topic[DHT11_SENSOR_COUNT] = {
         create_topic("sensor", "temperature", true),
         create_topic("sensor", "humidity", true)
     };
 
     size_t sensor_length = sizeof(sensor_name) / sizeof(sensor_name[0]);
-    float sensor_data[sensor_length];
 
     bool mocked = true;
+    float sensor_data[DHT11_SENSOR_COUNT] = {20.0f, 75.0f}; // initial values
 
-    while (1)
-    {
-        if (mocked)
-        {
-            int min = 15;
-            int max = 25;
-            sensor_data[0] = (float)(rand() % (max - min + 1) + min);
-
-            min = 50;
-            max = 100;
-            sensor_data[1] = (float)(rand() % (max - min + 1) + min);
+    while (1) {
+        if (mocked) {
+            
+            mockDh11SensorData(sensor_data, sensor_name);
 
             ESP_LOGI(MESH_TAG, "%s: %.1fC\n", sensor_name[0], sensor_data[0]);
         }
@@ -339,37 +333,6 @@ void task_mqtt_graph(void *args) {
     vTaskDelete(NULL);
 }
 
-// void esp_mesh_task_mqtt_keepalive(void *arg)
-// {
-//     is_running = true;
-//     char *print;
-//     uint8_t macList[2][6];
-
-//     // mac addr of this node to string
-//     esp_wifi_get_mac(WIFI_IF_AP, macList[0]);
-//     // get the parent of this node
-//     mesh_addr_t parent;
-//     esp_mesh_get_parent_bssid(&parent);
-//     memcpy(macList[1], parent.addr, 6);
-
-//     size_t macListLength = sizeof(macList) / sizeof(macList[0]);
-//     while (is_running)
-//     {
-
-//         for (size_t i = 0; i < macListLength; i++)
-//         {
-//             // send keepalive this mac
-//             asprintf(&print, "{'macSta': '" MACSTR "'}", MAC2STR(macList[i]));
-//             ESP_LOGI(MESH_TAG, "Tried to publish topic: keepalive %s", print);
-//             mqtt_app_publish("/topic/keepalive", MESH_TAG, print);
-//             free(print);
-//         }
-
-//         vTaskDelay(2 * 2000 / portTICK_PERIOD_MS);
-//     }
-//     vTaskDelete(NULL);
-// }
-
 void task_mqtt_client_start(void *args) {
     // read mqtt queues from arg
     mqtt_queues_t *mqtt_queues = (mqtt_queues_t *)args;
@@ -443,11 +406,10 @@ esp_err_t esp_tasks_runner(void) {
         xTaskCreate(task_mesh_table_routing, "mqtt routing-table", 3072, NULL, 5, NULL);
         vTaskDelay(10000 / portTICK_PERIOD_MS);
         xTaskCreate(task_mqtt_client_start, "mqtt task-aws", 7168, (void *)mqtt_queues, 5, NULL);
-        xTaskCreate(task_read_sensor_dh11, "Read sensor data from sensor", 3072, (void *)mqtt_queues, 5, NULL);
+        xTaskCreate(task_read_sensor_dh11, "Read data from sensor", 3072, (void *)mqtt_queues, 5, NULL);
         xTaskCreate(task_mqtt_graph, "Graph logging task", 3072, (void *)mqtt_queues, 5, NULL);
         xTaskCreate(task_notify_new_device_id, "Notify new device in mesh", 3072, (void *)mqtt_queues, 5, NULL);
-        xTaskCreate(task_notify_new_user_connected, "Notify new user mail connected", 1024, (void *)mqtt_queues, 5, NULL);
-        // xTaskCreate(esp_mesh_task_mqtt_keepalive, "Keepalive task", 3072, NULL, 5, NULL);
+        xTaskCreate(task_notify_new_user_connected, "Notify new user mail connected", 3072, (void *)mqtt_queues, 5, NULL);
         is_comm_mqtt_task_started = true;
     }
     return ESP_OK;
@@ -685,30 +647,32 @@ void ip_event_handler(void *arg, esp_event_base_t event_base,
     if (esp_netif_sntp_sync_wait(pdMS_TO_TICKS(10000)) != ESP_OK)
     {
         printf("Failed to update system time within 10s timeout");
+        esp_restart();
     }
     esp_tasks_runner();
 }
 
 void app_start(void) {
     persistence_handler_t handler = persistence_open();
-    size_t len_ssid = 32;
-    size_t len_passwd = 64;
-    size_t len_MESH_TAG = 64;
-    size_t len_EMAIL = 64;
-    char* ssid = malloc(len_ssid * sizeof(char));
-    char* pwd = malloc(len_passwd * sizeof(char));
-    MESH_TAG = malloc(len_MESH_TAG * sizeof(char));
-    EMAIL = malloc(len_EMAIL * sizeof(char));
-    uint8_t channel;
-    persistence_get_str(handler, "ssid", ssid, &len_ssid);
-    persistence_get_str(handler, "password", pwd, &len_passwd);
+    char* ssid = NULL;
+    char* pwd = NULL;
+    uint8_t channel = 0;
+    persistence_get_str(handler, "ssid", &ssid);
+    persistence_get_str(handler, "password", &pwd);
     persistence_get_u8(handler, "channel", &channel);
-    persistence_get_str(handler, "MESH_TAG", MESH_TAG, &len_MESH_TAG);
-    persistence_get_str(handler, "EMAIL", EMAIL, &len_EMAIL);
+    persistence_get_str(handler, "MESH_TAG", &MESH_TAG);
+    persistence_get_str(handler, "EMAIL", &EMAIL);
+
+    if (ssid == NULL || pwd == NULL || EMAIL == NULL) {
+        ESP_LOGE("esp32", "Error: Network manager not configured");
+        vTaskDelay(10000 / portTICK_PERIOD_MS);
+        persistence_erase_namespace();
+        esp_restart();
+    }
 
     ESP_LOGI(MESH_TAG, "SSID: %s, Channel: %d", ssid, channel);
 
-    // copy the first chars converting as uint8 from mesh_tag to MESH_TAG
+    // Set MESH ID from MESH_TAG
     for (int i = 0; i < strlen(MESH_TAG); i++){
         MESH_ID[i] = MESH_TAG[i];
     }
@@ -746,7 +710,6 @@ void app_start(void) {
 
     /* router */
     cfg.channel = channel;
-
     cfg.router.ssid_len = strlen(ssid);
     memcpy((uint8_t *)&cfg.router.ssid, ssid, cfg.router.ssid_len);
     memcpy((uint8_t *)&cfg.router.password, pwd, strlen(pwd));
@@ -809,6 +772,7 @@ esp_err_t config_button(void) {
 
 void network_manager_callback(char *ssid, uint8_t channel, char *password, char *mesh_name, char *email) {
     ESP_LOGI(MESH_TAG, "Llamé al callback");
+    // TODO: hide password from logs 
     ESP_LOGI(MESH_TAG, "Received config Wi-Fi SSID: %s, Channel: %d, Password: %s, Mesh Name: %s, Email: %s", ssid, channel, password, mesh_name, email);
     persistence_handler_t handler = persistence_open();
     persistence_set_str(handler, "ssid", ssid);
