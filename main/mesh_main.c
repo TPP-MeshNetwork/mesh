@@ -274,8 +274,8 @@ void task_notify_new_user_connected(void *args) {
 
     char * device_topic = create_topic("userSync", "", false);
 
-    for (int i = 0; i < 5; i++) {
-        if (esp_mesh_is_root()) {
+    if (esp_mesh_is_root()) {
+        for (int i = 0; i < 5; i++) {
             uint8_t macAp[6];
             esp_wifi_get_mac(WIFI_IF_AP, macAp);
             asprintf(&device_id_msg, "{\"mesh_id\": \"%s\", \"email\": \"%s\"}", MESH_TAG, EMAIL);
