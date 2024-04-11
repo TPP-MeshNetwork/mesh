@@ -268,13 +268,12 @@ void task_notify_new_device_id(void *args) {
 }
 
 void task_notify_new_user_connected(void *args) {
-    ESP_LOGI(MESH_TAG, "STARTED: task_notify_new_mesh");
-    mqtt_queues_t *mqtt_queues = (mqtt_queues_t *) args;
-    char *device_id_msg;
-
-    char * device_topic = create_topic("userSync", "", false);
-
     if (esp_mesh_is_root()) {
+        ESP_LOGI(MESH_TAG, "STARTED: task_notify_new_mesh");
+        mqtt_queues_t *mqtt_queues = (mqtt_queues_t *) args;
+        char *device_id_msg;
+
+        char * device_topic = create_topic("userSync", "", false);
         for (int i = 0; i < 5; i++) {
             uint8_t macAp[6];
             esp_wifi_get_mac(WIFI_IF_AP, macAp);
@@ -288,8 +287,8 @@ void task_notify_new_user_connected(void *args) {
             free(device_id_msg);
             vTaskDelay(24 * 3600 * 1000 / portTICK_PERIOD_MS);
         }
+        free(device_topic);
     }
-    free(device_topic);
     vTaskDelete(NULL);
 }
 
