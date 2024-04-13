@@ -266,11 +266,22 @@ void task_notify_new_user_connected(void *args) {
         mqtt_queues_t *mqtt_queues = (mqtt_queues_t *) args;
         char *device_id_msg;
 
-        char * device_topic = create_topic("userSync", EMAIL, false);
+        char *email_copy = malloc(strlen(EMAIL) + 1);
+        
+        strcpy(email_copy, EMAIL);
+        char *cut_email = malloc(strlen(EMAIL) + 1);
+        
+        strcpy(cut_email, EMAIL);
+        char *at_position = strchr(cut_email, '@');
+        if (at_position != NULL) {
+            *at_position = '\0'; // Terminamos la cadena en la posición del '@'
+        }
+
+        char * device_topic = create_topic("userSync", cut_email, false);
         for (int i = 0; i < 5; i++) {
             uint8_t macAp[6];
             esp_wifi_get_mac(WIFI_IF_AP, macAp);
-            asprintf(&device_id_msg, "{\"mesh_id\": \"%s\", \"email\": \"%s\"}", MESH_TAG, EMAIL);
+            asprintf(&device_id_msg, "{\"mesh_id\": \"%s\", \"email\": \"%s\"}", MESH_TAG, email_copy);
 
             ESP_LOGI(MESH_TAG, "Trying to queue message: %s", device_id_msg);
             if (mqtt_queues->mqttPublisherQueue != NULL) {
@@ -281,6 +292,8 @@ void task_notify_new_user_connected(void *args) {
             vTaskDelay(24 * 3600 * 1000 / portTICK_PERIOD_MS);
         }
         free(device_topic);
+        free(email_copy);
+        free(cut_email);
     }
     vTaskDelete(NULL);
 }
