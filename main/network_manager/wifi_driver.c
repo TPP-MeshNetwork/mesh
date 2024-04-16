@@ -10,6 +10,8 @@
 #include <esp_netif.h>
 #include <esp_http_server.h>
 #include "cJSON.h"
+#include "mdns.h"
+
 
 #define MIN(a, b) ((a) < (b) ? (a) : (b))
 
@@ -344,6 +346,12 @@ handler_args_t extra_args = {
 
 static httpd_handle_t start_webserver(void* callback)
 {
+    ESP_ERROR_CHECK( mdns_init() );
+    ESP_ERROR_CHECK( mdns_hostname_set("milos") );
+    ESP_LOGI(TAG, "mdns hostname set to: [%s]", "milos");
+    ESP_ERROR_CHECK( mdns_instance_name_set("Milos network provisioning") );
+    ESP_ERROR_CHECK(mdns_service_add(NULL, "_http", "_tcp", 80, NULL, 0));
+
     httpd_handle_t server = NULL;
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
     config.lru_purge_enable = true;
