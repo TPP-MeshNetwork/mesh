@@ -348,12 +348,15 @@ void task_mqtt_client_start(void *args) {
     char * clientIdentifier = malloc(18 * sizeof(char));
     sprintf(clientIdentifier, MACSTR, MAC2STR(macSta));
 
+    // get list of topics to subscribe to
+    char **topics_list = get_topics_list();
 
-    int mqtt_connection_status = start_mqtt_connection(&mqttContext, &xNetworkContext, clientIdentifier);
+
+    int mqtt_connection_status = start_mqtt_connection(&mqttContext, &xNetworkContext, clientIdentifier, topics_list);
     while (1) {
         if (mqtt_connection_status == EXIT_FAILURE) {
             ( void ) xTlsDisconnect( &xNetworkContext );
-            mqtt_connection_status = start_mqtt_connection(&mqttContext, &xNetworkContext, clientIdentifier);
+            mqtt_connection_status = start_mqtt_connection(&mqttContext, &xNetworkContext, clientIdentifier, topics_list);
             if (mqtt_connection_status == EXIT_SUCCESS) {
                 ESP_LOGE(MESH_TAG, "--- Reconnected to the server");
             }
@@ -390,6 +393,36 @@ void task_mqtt_client_start(void *args) {
     vTaskDelete(NULL);
 }
 
+void task_suscribers_events(void *args) {
+    ESP_LOGI(MESH_TAG, "STARTED: task_suscribers_events");
+    mqtt_queues_t *mqtt_queues = (mqtt_queues_t *)args;
+
+    char **topics_list = get_topics_list();
+    mqtt_message_t *buffer = malloc(sizeof(mqtt_message_t));
+    if (buffer == NULL) {
+        ESP_LOGE(MESH_TAG, "Failed to allocate memory for buffer");
+        return;
+    }
+
+    while (1) {
+        // looping though each topic queue and check if we have an incoming message
+        for(size_t i = 0; topics_list[i] != NULL; i++) {
+            char * topic = topics_list[i];
+            struct SuscriptionTopicsHash *s = suscriber_find_topic(topic);
+            if (s != NULL)
+                if (s->queue != NULL)
+                        if (xQueueReceive(s->queue, (void *)buffer, 0) == pdTRUE) {
+                            ESP_LOGI(MESH_TAG, "##########################");
+                            ESP_LOGI(MESH_TAG, "## Received incoming message: %s on topic: %s", buffer->message, buffer->topic);
+                            ESP_LOGI(MESH_TAG, "##########################");
+                        }
+        }
+        vTaskDelay(100 / portTICK_PERIOD_MS);   
+    }
+    free(buffer);
+    vTaskDelete(NULL);
+}
+
 esp_err_t esp_tasks_runner(void) {
     static bool is_comm_mqtt_task_started = false;
 
@@ -398,26 +431,28 @@ esp_err_t esp_tasks_runner(void) {
     mqtt_queues_t *mqtt_queues = (mqtt_queues_t *)malloc(sizeof(mqtt_queues_t));
 
     mqtt_queues->mqttPublisherQueue = xQueueCreate(queueSize, sizeof(mqtt_message_t));
-    mqtt_queues->mqttSuscriberQueue = xQueueCreate(queueSize, sizeof(mqtt_message_t));
+    mqtt_queues->mqttSuscriberHash = suscription_topics;
 
     if (mqtt_queues->mqttPublisherQueue == NULL)
     {
         ESP_LOGI(MESH_TAG, "Error creating the mqttPublisherQueue");
     }
-    if (mqtt_queues->mqttSuscriberQueue == NULL)
-    {
-        ESP_LOGI(MESH_TAG, "Error creating the mqttSuscriberQueue");
-    }
+
+    // add topic that we want to subscribe to
+    suscriber_add_topic(create_topic("demo", "config", false));
+    
 
     if (!is_comm_mqtt_task_started)
     {
         xTaskCreate(task_mesh_table_routing, "mqtt routing-table", 3072, NULL, 5, NULL);
         vTaskDelay(10000 / portTICK_PERIOD_MS);
         xTaskCreate(task_mqtt_client_start, "mqtt task-aws", 7168, (void *)mqtt_queues, 5, NULL);
-        xTaskCreate(task_read_sensor_dh11, "Read data from sensor", 3072, (void *)mqtt_queues, 5, NULL);
-        xTaskCreate(task_mqtt_graph, "Graph logging task", 3072, (void *)mqtt_queues, 5, NULL);
-        xTaskCreate(task_notify_new_device_id, "Notify new device in mesh", 3072, (void *)mqtt_queues, 5, NULL);
-        xTaskCreate(task_notify_new_user_connected, "Notify new user mail connected", 3072, (void *)mqtt_queues, 5, NULL);
+        xTaskCreate(task_suscribers_events, "Task that reads suscription events", 3072, (void *)mqtt_queues, 5, NULL);
+        vTaskDelay(2000 / portTICK_PERIOD_MS);
+        // xTaskCreate(task_read_sensor_dh11, "Read data from sensor", 3072, (void *)mqtt_queues, 5, NULL);
+        // xTaskCreate(task_mqtt_graph, "Graph logging task", 3072, (void *)mqtt_queues, 5, NULL);
+        // xTaskCreate(task_notify_new_device_id, "Notify new device in mesh", 3072, (void *)mqtt_queues, 5, NULL);
+        // xTaskCreate(task_notify_new_user_connected, "Notify new user mail connected", 3072, (void *)mqtt_queues, 5, NULL);
         is_comm_mqtt_task_started = true;
     }
     return ESP_OK;
