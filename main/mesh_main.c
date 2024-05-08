@@ -62,6 +62,9 @@ static uint8_t s_mesh_tx_payload[CONFIG_MESH_ROUTE_TABLE_SIZE * 6 + 1];
 static unsigned long int last_time = 0;
 static bool last_status_is_pressed = true;
 
+const char *sensor_name[2] = {"temperature", "humidity"};
+
+
 
 void publish(QueueHandle_t publishQueue, const char *topic, const char *message) {
     mqtt_message_t mqtt_message;
@@ -108,7 +111,11 @@ char * create_topic(char* topic_type, char* topic_suffix, bool withDeviceIndicat
     esp_wifi_get_mac(WIFI_IF_AP, macAp);
     char *topic;
     if (withDeviceIndicator) {
-        asprintf(&topic, "/mesh/%s/device/" MACSTR "/%s/%s", MESH_TAG, MAC2STR(macAp), topic_type, topic_suffix);
+        if ((strcmp("",topic_suffix) == 0)) {
+            asprintf(&topic, "/mesh/%s/device/" MACSTR "/%s", MESH_TAG, MAC2STR(macAp), topic_type);
+        } else {
+            asprintf(&topic, "/mesh/%s/device/" MACSTR "/%s/%s", MESH_TAG, MAC2STR(macAp), topic_type, topic_suffix);
+        }
     } else {
         asprintf(&topic, "/mesh/%s/%s/%s", MESH_TAG, topic_type, topic_suffix);
     }
@@ -239,7 +246,6 @@ void task_notify_new_device_id(void *args) {
     char *device_id_msg;
 
     char * device_topic = create_topic("devices", "report", false);
-    const char *sensor_name[2] = {"temperature", "humidity"};
     char result[100] = ""; // Initialize result string
 
     while (1) {
@@ -285,6 +291,47 @@ void task_notify_new_user_connected(void *args) {
     vTaskDelete(NULL);
 }
 
+char* constructPayload() {
+    bool sensor_values[2] = {true, true};
+    int num_sensors = sizeof(sensor_name);
+
+    char *payload;
+    asprintf(&payload, "{");
+    for (int i = 0; i < num_sensors; ++i) {
+        if (i > 0)
+            asprintf(&payload, "%s, ", payload);
+        asprintf(&payload, "%s\"%s\": %s", payload, sensor_name[i], sensor_values[i] ? "true" : "false");
+    }
+    asprintf(&payload, "%s}", payload);
+    return payload;
+}
+
+void task_send_config(void *args) {
+    if (esp_mesh_is_root()) {
+        ESP_LOGI(MESH_TAG, "STARTED: task_notify_new_mesh");
+        mqtt_queues_t *mqtt_queues = (mqtt_queues_t *) args;
+        char *device_id_msg;
+
+        char *payload = constructPayload();
+
+        char * device_topic = create_topic("config", "", true);
+        
+        // read topic {"action": "read"}
+        // send response with payload data
+        uint8_t macAp[6];
+        esp_wifi_get_mac(WIFI_IF_AP, macAp);
+        asprintf(&device_id_msg, "{\"action\": \"read\", \"payload\": %s}", payload);
+
+        ESP_LOGI(MESH_TAG, "Trying to queue message: %s", device_id_msg);
+        if (mqtt_queues->mqttPublisherQueue != NULL) {
+            publish(mqtt_queues->mqttPublisherQueue, device_topic, device_id_msg);
+            ESP_LOGI(MESH_TAG, "queued done: %s - %s", device_topic, device_id_msg);
+        }
+        free(device_id_msg);
+        free(device_topic);
+    }
+    vTaskDelete(NULL);
+}
 
 void task_mqtt_graph(void *args) {
     ESP_LOGI(MESH_TAG, "STARTED: task_mqtt_graph");
@@ -453,6 +500,7 @@ esp_err_t esp_tasks_runner(void) {
         // xTaskCreate(task_mqtt_graph, "Graph logging task", 3072, (void *)mqtt_queues, 5, NULL);
         // xTaskCreate(task_notify_new_device_id, "Notify new device in mesh", 3072, (void *)mqtt_queues, 5, NULL);
         // xTaskCreate(task_notify_new_user_connected, "Notify new user mail connected", 3072, (void *)mqtt_queues, 5, NULL);
+        // xTaskCreate(task_send_config, "Send sensor config after read topic, 3072, (void *)mqtt_queues, 5, NULL);
         is_comm_mqtt_task_started = true;
     }
     return ESP_OK;
