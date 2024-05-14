@@ -329,6 +329,7 @@ void task_send_config(void *args) {
         }
         free(device_id_msg);
         free(device_topic);
+        free(payload);
     }
     vTaskDelete(NULL);
 }
