@@ -912,7 +912,7 @@ static int handlePublishResend( MQTTContext_t * pMqttContext )
 
 /*-----------------------------------------------------------*/
 
-static void handleIncomingPublishhandleIncomingPublish( MQTTPublishInfo_t * pPublishInfo,
+static void handleIncomingPublish( MQTTPublishInfo_t * pPublishInfo,
                                    uint16_t packetIdentifier )
 {
     assert( pPublishInfo != NULL );
