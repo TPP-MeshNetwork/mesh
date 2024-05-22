@@ -24,10 +24,11 @@
 #include "network_transport.h"
 #include "esp_netif_sntp.h"
 #include <freertos/FreeRTOS.h>
-#include "esp_system.h"
 #include "network_manager/provisioning.h"
 #include "persistence/persistence.h"
-#include "cJSON.h"
+#include "suscription_event_handlers.h"
+#include "mqtt_utils.h"
+#include "performance.h"
 
 /*******************************************************
  *                Macros
@@ -40,9 +41,7 @@
  *                Constants
  *******************************************************/
 #define RST_BTN 13
-#define UNCONFIGURED_FLAG 0
-#define CONFIGURED_FLAG 1
-static char * MESH_TAG = "esp32-mesh";
+char * MESH_TAG = "esp32-mesh";
 static char * EMAIL = "";
 // MESH ID must be a 6-byte array to identify the mesh network and its created from the first 6 bytes of the MESH_TAG
 static uint8_t MESH_ID[6] = { 0x65, 0x73, 0x70, 0x33, 0x32, 0x2D};
@@ -64,23 +63,11 @@ static unsigned long int last_time = 0;
 static bool last_status_is_pressed = true;
 
 /*******************************************************
- *                Variable Definitions for MQTT
+ *       Variable Global Definitions for MQTT
  *******************************************************/
 char * clientIdentifier = NULL;
 mqtt_queues_t *mqtt_queues = NULL;
 
-
-void publish(const char *topic, const char *message) {
-    if(mqtt_queues == NULL) {
-        ESP_LOGE(MESH_TAG, "Error in publish: mqtt_queues is NULL");
-        return;
-    }
-    QueueHandle_t publishQueue = mqtt_queues->mqttPublisherQueue;
-    mqtt_message_t mqtt_message;
-    strcpy(mqtt_message.topic, topic);
-    strcpy(mqtt_message.message, message);
-    xQueueSend(publishQueue, &mqtt_message, 0);
-}
 
 void static recv_cb(mesh_addr_t *from, mesh_data_t *data) {
     if (data->data[0] == CMD_ROUTE_TABLE)
@@ -103,50 +90,6 @@ void static recv_cb(mesh_addr_t *from, mesh_data_t *data) {
         ESP_LOGE(MESH_TAG, "Error in receiving raw mesh data: Unknown command");
     }
 }
-
-void log_perfdata() {
-    uint32_t free_heap_size = 0, min_free_heap_size = 0;
-    free_heap_size = esp_get_free_heap_size();
-    min_free_heap_size = esp_get_minimum_free_heap_size();
-    ESP_LOGI("log_perfdata", "\n\n free heap size = %ld \t  min_free_heap_size = %ld \n\n", free_heap_size, min_free_heap_size);
-}
-
-char * create_topic(char* topic_type, char* topic_suffix, bool withDeviceIndicator) {
-    if (topic_type == NULL || topic_suffix == NULL) {
-        ESP_LOGE(MESH_TAG, "Error in create_topic: topic_type or topic_suffix is NULL");
-        return NULL;
-    }
-    uint8_t macAp[6];
-    esp_wifi_get_mac(WIFI_IF_AP, macAp);
-    char *topic;
-    if (withDeviceIndicator) {
-        asprintf(&topic, "/mesh/%s/device/" MACSTR "/%s/%s", MESH_TAG, MAC2STR(macAp), topic_type, topic_suffix);
-    } else if(strcmp(topic_suffix, "") == 0)
-        asprintf(&topic, "/mesh/%s/%s", MESH_TAG, topic_type);
-    else {
-        asprintf(&topic, "/mesh/%s/%s/%s", MESH_TAG, topic_type, topic_suffix);
-    }
-    return topic;
-}
-
-char *create_message(char *message) {
-    if (message == NULL)
-    {
-        ESP_LOGE(MESH_TAG, "Error in create_message message is NULL");
-        return NULL;
-    }
-
-    // get the timestamp for the message in epoch
-    time_t now;
-    time(&now);
-
-    uint8_t macAp[6];
-    esp_wifi_get_mac(WIFI_IF_AP, macAp);
-    char * new_message;
-    asprintf(&new_message, "{\"mesh_id\": \"%s\", \"device_id\": \"" MACSTR "\", \"timestamp_value\": %lld, %s }", MESH_TAG, MAC2STR(macAp), now, message);
-    return new_message;
-}
-
 
 void task_read_sensor_dh11(void *args) {
     ESP_LOGI(MESH_TAG, "STARTED: task_read_sensor_dh11");
@@ -320,14 +263,13 @@ void task_mqtt_graph(void *args) {
     char * topic = create_topic("graph", "report", false);
 
     while (is_running) {
-        log_perfdata(); // for debugging memory leaks
+        log_memory(); // for debugging memory leaks
 
         if (esp_mesh_is_root()) {
             // the root node has no parent so instead we get the WIFI_IF_AP -> WIFI_IF_STA
             asprintf(&graph_message, "\"layer\": %d, \"root\": true, \"macSta\": \"" MACSTR "\", \"macSoftap\": \"" MACSTR "\"", esp_mesh_get_layer(), MAC2STR(macSta), MAC2STR(macAp));
         }
-        else
-        {
+        else {
             asprintf(&graph_message, "\"layer\": %d, \"root\": false, \"macSta\": \"" MACSTR "\", \"macSoftap\": \"" MACSTR "\"", esp_mesh_get_layer(), MAC2STR(parent.addr), MAC2STR(macAp));
         }
 
@@ -438,67 +380,6 @@ void task_suscribers_events(void *args) {
     vTaskDelete(NULL);
 }
 
-void suscriber_config_handler(char* topic, char* message) {
-    ESP_LOGI("[suscriber_config_handler]", "Config EVENT HANDLER");
-    ESP_LOGI("[suscriber_config_handler]", "Message: %s", message);
-    cJSON *root = cJSON_Parse(message);
-    if (root == NULL) {
-        ESP_LOGE("[suscriber_config_handler]", "Error parsing JSON");
-        return;
-    }
-
-    // get the sender_client_id from the message
-    char* sender_client_id = cJSON_GetObjectItem(root,"sender_client_id")->valuestring;
-    // if the sender_client_id is the same as the current client_id then ignore the message
-    if (strcmp(sender_client_id, clientIdentifier) == 0) {
-        ESP_LOGI("[suscriber_config_handler]", "Ignoring message from self");
-        return;
-    }
-    // get the action of the message
-    char* action = cJSON_GetObjectItem(root,"action")->valuestring;
-    // get the type
-    char* type = cJSON_GetObjectItem(root,"type")->valuestring;
-    // get the payload
-    cJSON *payload = cJSON_GetObjectItem(root,"payload");
-
-    if (!strcmp(type, "config")) {
-        if (!strcmp(action, "read")) {
-            // read the configuration
-
-            // {
-            // "action": "read", // "write"
-            //     "sender_client_id": <client_id_esp>, 
-            //     "type": "config" 
-            //     "payload": { 
-            //         "sensors": [{
-            //             "type": "temperature",
-            //             "pool_time": 5,
-            //             "active": true,
-            //         },
-            //         {
-            //             "type": "humidity",
-            //             "pool_time": 10,
-            //             "active": true
-            //         }]
-            //     }
-            // }
-
-            char *payload;
-            asprintf(&payload, "\"sensors\": [{\"type\": \"temperature\", \"pool_time\": 5, \"active\": true}, {\"type\": \"humidity\", \"pool_time\": 10, \"active\": true}]");
-            char *message;
-            asprintf(&message, "{\"action\": \"read\", \"sender_client_id\": \"%s\", \"type\": \"config\", \"payload\": {%s}}", clientIdentifier, payload);
-            publish(create_topic("config", "", false), message);
-        } else if (!strcmp(action, "write")) {
-            // write the configuration
-            // publish the configuration
-        } else {
-            ESP_LOGE("[suscriber_config_handler]", "Unknown action");
-        }
-    } else {
-        ESP_LOGE("[suscriber_config_handler]", "Unknown type");
-    }
-
-}
 
 esp_err_t esp_tasks_runner(void) {
     static bool is_comm_mqtt_task_started = false;
@@ -516,8 +397,7 @@ esp_err_t esp_tasks_runner(void) {
     }
 
     // add topic that we want to subscribe to
-    suscriber_add_topic(create_topic("config", "", false), suscriber_config_handler); // topic config bidirectional /mesh/<meshid>/config
-    
+    suscriber_add_topic(create_topic("config", "", false), suscriber_global_config_handler); // topic config bidirectional /mesh/<meshid>/config
 
     if (!is_comm_mqtt_task_started) {
         xTaskCreate(task_mesh_table_routing, "mqtt routing-table", 1500, NULL, 5, NULL);
@@ -889,20 +769,6 @@ esp_err_t config_button(void) {
     return ESP_OK;
 }
 
-void network_manager_callback(char *ssid, uint8_t channel, char *password, char *mesh_name, char *email) {
-    ESP_LOGI(MESH_TAG, "[network_manager_callback] called");
-    // TODO: hide password from logs 
-    ESP_LOGI(MESH_TAG, "[network_manager_callback] Received config Wi-Fi SSID: %s, Channel: %d, Password: %s, Mesh Name: %s, Email: %s", ssid, channel, password, mesh_name, email);
-    persistence_handler_t handler = persistence_open();
-    persistence_set_str(handler, "ssid", ssid);
-    persistence_set_str(handler, "password", password);
-    persistence_set_u8(handler, "channel", channel);
-    persistence_set_u8(handler, "configured", CONFIGURED_FLAG);
-    persistence_set_str(handler, "MESH_TAG", mesh_name);
-    persistence_set_str(handler, "EMAIL", email);
-
-    esp_restart();
-}
 
 void app_main(void) {
     config_button();
