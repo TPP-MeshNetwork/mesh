@@ -25,3 +25,8 @@ int disconnectMqttSession( MQTTContext_t * pMqttContext );
 int publishToTopic( MQTTContext_t * pMqttContext, char * message, char *topic, MQTTQoS_t qos );
 
 int publishLoop( MQTTContext_t * pMqttContext, char * message, char *topic);
+
+MQTTStatus_t processLoopWithTimeout( MQTTContext_t * pMqttContext,
+                                            uint32_t ulTimeoutMs );
+
+int disconnectMqttSession( MQTTContext_t * pMqttContext );

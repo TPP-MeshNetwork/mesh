@@ -9,18 +9,20 @@
 
 extern int queueSize;
 extern int suscriberQueueSize;
-extern struct SuscriptionTopicsHash *suscription_topics;
 
-
-struct SuscriptionTopicsHash {
+typedef struct {
     char topic[255];                    /* key topic */
     QueueHandle_t queue;       /* value */
+    void (*event_handler)(char*topic, char *message); /* event handler function pointer */
     UT_hash_handle hh;         /* makes this structure hashable */
-};
+} SuscriptionTopicsHash_t;
+
+extern SuscriptionTopicsHash_t *suscription_topics;
+
 
 typedef struct {
     QueueHandle_t mqttPublisherQueue;
-    struct SuscriptionTopicsHash *mqttSuscriberHash;
+    SuscriptionTopicsHash_t *mqttSuscriberHash;
 } mqtt_queues_t;
 
 typedef struct {
@@ -28,10 +30,13 @@ typedef struct {
     char topic[255];
 } mqtt_message_t;
 
-
+void init_suscriber_hash();
 char ** get_topics_list();
-void suscriber_add_topic(char *topic);
-struct SuscriptionTopicsHash * suscriber_find_topic(char * topic);
-void suscriber_delete_topic(struct SuscriptionTopicsHash *s);
+// add event handler function pointer
+void suscriber_add_topic(char *topic, void (*event_handler)(char* topic, char* message));
+SuscriptionTopicsHash_t * suscriber_find_topic(const char* topic);
+void suscriber_delete_topic(SuscriptionTopicsHash_t *s);
+void suscriber_add_message(const char* topic, const char* message);
+void suscriber_get_message(const char* topic);
 
 #endif
