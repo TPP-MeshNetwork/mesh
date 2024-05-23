@@ -397,7 +397,9 @@ esp_err_t esp_tasks_runner(void) {
     }
 
     // add topic that we want to subscribe to
-    suscriber_add_topic(create_topic("config", "", false), suscriber_global_config_handler); // topic config bidirectional /mesh/<meshid>/config
+    suscriber_add_topic(create_topic("config", "", false), suscriber_global_config_handler); // topic config read from dashboard /mesh/<meshid>/config
+    suscriber_add_topic(create_topic("config", "", true), suscriber_particular_config_handler); // topic config bidirectional /mesh/<meshid>/device/<deviceId>/config
+
 
     if (!is_comm_mqtt_task_started) {
         xTaskCreate(task_mesh_table_routing, "mqtt routing-table", 1500, NULL, 5, NULL);

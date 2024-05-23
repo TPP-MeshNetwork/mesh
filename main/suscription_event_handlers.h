@@ -11,5 +11,7 @@
 *  Description: Event handler for the config global suscription
 */
 void suscriber_global_config_handler(char* topic, char* message);
+void suscriber_particular_config_handler(char* topic, char* message);
 
+char * new_config_message(char* action, char* type, cJSON* payload);
 #endif // SUSCRIPTION_EVENT_HANDLERS_H

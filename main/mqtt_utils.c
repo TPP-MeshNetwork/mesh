@@ -41,7 +41,10 @@ char * create_topic(char* topic_type, char* topic_suffix, bool withDeviceIndicat
     esp_wifi_get_mac(WIFI_IF_AP, macAp);
     char *topic;
     if (withDeviceIndicator) {
-        asprintf(&topic, "/mesh/%s/device/" MACSTR "/%s/%s", MESH_TAG, MAC2STR(macAp), topic_type, topic_suffix);
+        if (strcmp(topic_suffix, "") == 0)
+          asprintf(&topic, "/mesh/%s/device/" MACSTR "/%s", MESH_TAG, MAC2STR(macAp), topic_type);
+        else
+          asprintf(&topic, "/mesh/%s/device/" MACSTR "/%s/%s", MESH_TAG, MAC2STR(macAp), topic_type, topic_suffix);
     } else if (strcmp(topic_suffix, "") == 0)
         asprintf(&topic, "/mesh/%s/%s", MESH_TAG, topic_type);
     else {
