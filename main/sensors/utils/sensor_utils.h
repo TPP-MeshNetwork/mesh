@@ -6,11 +6,6 @@
 #include <freertos/task.h>
 #include "mqtt_queue.h"
 #include "../mqtt/utils/mqtt_utils.h"
-////////// Sensors Includes /////////
-// // Sensor: DH11
-// #include <components/dht.h>
-// #define SENSOR_TYPE DHT_TYPE_DHT11
-
 
 extern char * MESH_TAG;
 typedef struct {
