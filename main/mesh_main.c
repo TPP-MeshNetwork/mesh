@@ -15,28 +15,26 @@
 #include "esp_log.h"
 #include "esp_mesh.h"
 #include "nvs_flash.h"
-#include "mesh_netif.h"
+#include "mesh_netif/mesh_netif.h"
 #include "driver/gpio.h"
 #include "freertos/semphr.h"
-#include <components/dht.h>
-#include "mqtt/aws_mqtt.h"
-#include "mqtt_queue.h"
+#include "mqtt/client/aws_mqtt.h"
 #include "network_transport.h"
 #include "esp_netif_sntp.h"
 #include <freertos/FreeRTOS.h>
 #include "network_manager/provisioning.h"
 #include "persistence/persistence.h"
-#include "suscription_event_handlers.h"
-#include "mqtt_utils.h"
-#include "performance.h"
+#include "suscription_handlers/suscription_event_handlers.h"
+#include "mqtt/utils/mqtt_utils.h"
+#include "performance/performance.h"
+#include "sensors/tasks/sensor_tasks.h"
+#include "sensors/utils/sensor_utils.h"
 
 /*******************************************************
  *                Macros
  *******************************************************/
 #define CMD_ROUTE_TABLE 0x56
 
-#define CONFIG_EXAMPLE_DATA_GPIO 33
-#define SENSOR_TYPE DHT_TYPE_DHT11
 /*******************************************************
  *                Constants
  *******************************************************/
@@ -91,65 +89,65 @@ void static recv_cb(mesh_addr_t *from, mesh_data_t *data) {
     }
 }
 
-void task_read_sensor_dh11(void *args) {
-    ESP_LOGI(MESH_TAG, "STARTED: task_read_sensor_dh11");
-    mqtt_queues_t *mqtt_queues = (mqtt_queues_t *)args;
-    char *sensor_message;
-    const int max_tries = 10;
-    int tries = 0;
+// void task_read_sensor_dh11(void *args) {
+//     ESP_LOGI(MESH_TAG, "STARTED: task_read_sensor_dh11");
+//     mqtt_queues_t *mqtt_queues = (mqtt_queues_t *)args;
+//     char *sensor_message;
+//     const int max_tries = 10;
+//     int tries = 0;
 
-    const char *sensor_name[DHT11_SENSOR_COUNT] = {"temperature", "humidity"};
+//     const char *sensor_name[DHT11_SENSOR_COUNT] = {"temperature", "humidity"};
 
-    char * sensor_topic[DHT11_SENSOR_COUNT] = {
-        create_topic("sensor", "temperature", true),
-        create_topic("sensor", "humidity", true)
-    };
+//     char * sensor_topic[DHT11_SENSOR_COUNT] = {
+//         create_topic("sensor", "temperature", true),
+//         create_topic("sensor", "humidity", true)
+//     };
 
-    size_t sensor_length = sizeof(sensor_name) / sizeof(sensor_name[0]);
+//     size_t sensor_length = sizeof(sensor_name) / sizeof(sensor_name[0]);
 
-    bool mocked = true;
-    float sensor_data[DHT11_SENSOR_COUNT] = {20.0f, 75.0f}; // initial values
+//     bool mocked = true;
+//     float sensor_data[DHT11_SENSOR_COUNT] = {20.0f, 75.0f}; // initial values
 
-    while (1) {
-        if (mocked) {
+//     while (1) {
+//         if (mocked) {
             
-            mockDh11SensorData(sensor_data, sensor_name);
+//             mockDh11SensorData(sensor_data, sensor_name);
 
-            ESP_LOGI(MESH_TAG, "%s: %.1fC\n", sensor_name[0], sensor_data[0]);
-        }
-        else if (dht_read_float_data(SENSOR_TYPE, CONFIG_EXAMPLE_DATA_GPIO, sensor_data + 1, sensor_data) == ESP_OK)
-        {
-            ESP_LOGI(MESH_TAG, "%s: %.1fC\n", sensor_name[0], sensor_data[0]);
-        }
-        else {
-            // stopping reading sensor if it fails too many times
-            tries++;
-            if (tries > max_tries)
-                break;
-            ESP_LOGI(MESH_TAG, "Could not read data from sensor\n");
-            vTaskDelay(pdMS_TO_TICKS(1000));
-            continue;
-        }
+//             ESP_LOGI(MESH_TAG, "%s: %.1fC\n", sensor_name[0], sensor_data[0]);
+//         }
+//         else if (dht_read_float_data(SENSOR_TYPE, CONFIG_EXAMPLE_DATA_GPIO, sensor_data + 1, sensor_data) == ESP_OK)
+//         {
+//             ESP_LOGI(MESH_TAG, "%s: %.1fC\n", sensor_name[0], sensor_data[0]);
+//         }
+//         else {
+//             // stopping reading sensor if it fails too many times
+//             tries++;
+//             if (tries > max_tries)
+//                 break;
+//             ESP_LOGI(MESH_TAG, "Could not read data from sensor\n");
+//             vTaskDelay(pdMS_TO_TICKS(1000));
+//             continue;
+//         }
 
-        for (size_t i = 0; i < sensor_length; i++) {
-            asprintf(&sensor_message, " \"sensor_type\": \"%s\", \"sensor_value\": %.1f ", sensor_name[i], sensor_data[i]);
-            char *message = create_message(sensor_message);
+//         for (size_t i = 0; i < sensor_length; i++) {
+//             asprintf(&sensor_message, " \"sensor_type\": \"%s\", \"sensor_value\": %.1f ", sensor_name[i], sensor_data[i]);
+//             char *message = create_message(sensor_message);
 
-            ESP_LOGI(MESH_TAG, "Trying to queue message: %s", message);
-            if (mqtt_queues->mqttPublisherQueue != NULL) {
-                publish(sensor_topic[i], message);
-                ESP_LOGI(MESH_TAG, "queued done: %s", message);
-            }
-            free(message);
-            free(sensor_message);
-        }
+//             ESP_LOGI(MESH_TAG, "Trying to queue message: %s", message);
+//             if (mqtt_queues->mqttPublisherQueue != NULL) {
+//                 publish(sensor_topic[i], message);
+//                 ESP_LOGI(MESH_TAG, "queued done: %s", message);
+//             }
+//             free(message);
+//             free(sensor_message);
+//         }
 
-        vTaskDelay(pdMS_TO_TICKS(10000));
-    }
-    free(sensor_topic[0]);
-    free(sensor_topic[1]);
-    vTaskDelete(NULL);
-}
+//         vTaskDelay(pdMS_TO_TICKS(10000));
+//     }
+//     free(sensor_topic[0]);
+//     free(sensor_topic[1]);
+//     vTaskDelete(NULL);
+// }
 
 void task_mesh_table_routing(void *args) {
     ESP_LOGI(MESH_TAG, "STARTED: task_mesh_table_routing");
@@ -240,7 +238,6 @@ void task_notify_new_user_connected(void *args) {
     }
     vTaskDelete(NULL);
 }
-
 
 void task_mqtt_graph(void *args) {
     ESP_LOGI(MESH_TAG, "STARTED: task_mqtt_graph");
@@ -400,17 +397,17 @@ esp_err_t esp_tasks_runner(void) {
     suscriber_add_topic(create_topic("config", "", false), suscriber_global_config_handler); // topic config read from dashboard /mesh/<meshid>/config
     suscriber_add_topic(create_topic("config", "", true), suscriber_particular_config_handler); // topic config bidirectional /mesh/<meshid>/device/<deviceId>/config
 
-
     if (!is_comm_mqtt_task_started) {
-        xTaskCreate(task_mesh_table_routing, "mqtt routing-table", 1500, NULL, 5, NULL);
+        xTaskCreate(task_mesh_table_routing, "mqtt routing-table", 2048, NULL, 5, NULL);
         vTaskDelay(5000 / portTICK_PERIOD_MS);
         xTaskCreate(task_mqtt_client_start, "mqtt task-aws", 8096, (void *)mqtt_queues, 5, NULL);
         xTaskCreate(task_suscribers_events, "Task that reads suscription events", 4096, NULL, 5, NULL);
-        // vTaskDelay(2000 / portTICK_PERIOD_MS);
-        // xTaskCreate(task_read_sensor_dh11, "Read data from sensor", 3072, (void *)mqtt_queues, 5, NULL);
-        // xTaskCreate(task_mqtt_graph, "Graph logging task", 3072, (void *)mqtt_queues, 5, NULL);
-        // xTaskCreate(task_notify_new_device_id, "Notify new device in mesh", 3072, (void *)mqtt_queues, 5, NULL);
-        // xTaskCreate(task_notify_new_user_connected, "Notify new user mail connected", 3072, (void *)mqtt_queues, 5, NULL);
+        
+        vTaskDelay(2000 / portTICK_PERIOD_MS);
+        create_sensor_task("task_sensor_dh11", task_sensor_dh11, (void *) mqtt_queues);
+        xTaskCreate(task_mqtt_graph, "Graph logging task", 3072, (void *)mqtt_queues, 5, NULL);
+        xTaskCreate(task_notify_new_device_id, "Notify new device in mesh", 3072, (void *)mqtt_queues, 5, NULL);
+        xTaskCreate(task_notify_new_user_connected, "Notify new user mail connected", 3072, (void *)mqtt_queues, 5, NULL);
         is_comm_mqtt_task_started = true;
     }
     return ESP_OK;

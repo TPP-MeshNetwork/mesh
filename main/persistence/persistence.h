@@ -11,7 +11,6 @@ typedef uint32_t persistence_handler_t;
 #define PERSISTENCE_OP_OK 2
 #define PERSISTENCE_OP_FAIL 3
 
-void greet(void);
 persistence_err_t persistence_init(void);
 persistence_err_t persistence_erase_all(void);
 persistence_err_t persistence_erase_namespace(void);

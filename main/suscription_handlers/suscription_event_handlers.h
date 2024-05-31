@@ -4,7 +4,7 @@
 #include "mqtt_queue.h"
 #include "cJSON.h"
 #include "esp_log.h"
-#include "mqtt_utils.h"
+#include "mqtt/utils/mqtt_utils.h"
 #include "mqtt_queue.h"
 
 /* suscriber_config_handler

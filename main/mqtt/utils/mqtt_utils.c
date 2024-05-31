@@ -24,6 +24,11 @@ char *create_message(char *message) {
     // get the timestamp for the message in epoch
     time_t now;
     time(&now);
+    if (time(&now) >= 0) {
+        ESP_LOGI(MESH_TAG, "The current time is: %lld", now);
+    } else {
+        ESP_LOGE(MESH_TAG, "Error in create_message: time function call was unsuccessful");
+    }
 
     uint8_t macAp[6];
     esp_wifi_get_mac(WIFI_IF_AP, macAp);

@@ -1,9 +1,5 @@
 #include "persistence.h"
 
-void greet(void) {
-    ESP_LOGI("PERSISTENCE", "ESTOY EN PERSISTENCE");
-}
-
 persistence_err_t persistence_init(void) {
     esp_err_t err = nvs_flash_init();
     if (err == ESP_OK) {

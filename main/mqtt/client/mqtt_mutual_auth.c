@@ -57,7 +57,7 @@
 #include <time.h>
 
 /* proyect includes */
-#include "mqtt_queue.h"
+#include "../mqtt_queue.h"
 
 
 /* POSIX includes. */
@@ -1043,8 +1043,6 @@ static void eventCallback( MQTTContext_t * pMqttContext,
 
     packetIdentifier = pDeserializedInfo->packetIdentifier;
 
-    printf("------>>>> packetIdentifier: %d \n", packetIdentifier);
-
     /* Handle incoming publish. The lower 4 bits of the publish packet
      * type is used for the dup, QoS, and retain flags. Hence masking
      * out the lower bits to check if the packet is publish. */
@@ -1066,17 +1064,6 @@ static void eventCallback( MQTTContext_t * pMqttContext,
                  * requested. The SUBACK will be parsed to obtain the status code, and this status code will be stored in global
                  * variable globalSubAckStatus. */
                 updateSubAckStatus( pPacketInfo );
-
-                /* Check status of the subscription request. If globalSubAckStatus does not indicate
-                 * server refusal of the request (MQTTSubAckFailure), it contains the QoS level granted
-                 * by the server, indicating a successful subscription attempt. */
-                if( globalSubAckStatus != MQTTSubAckFailure )
-                {
-                    LogInfo( ( "Subscribed to the topic %.*s. with maximum QoS %u.\n\n",
-                               MQTT_EXAMPLE_TOPIC_LENGTH,
-                               MQTT_EXAMPLE_TOPIC,
-                               globalSubAckStatus ) );
-                }
 
                 /* Make sure ACK packet identifier matches with Request packet identifier. */
                 assert( globalSubscribePacketIdentifier == packetIdentifier );
@@ -1614,6 +1601,17 @@ int start_mqtt_connection(MQTTContext_t * mqttContext, NetworkContext_t * xNetwo
                             strlen(topics[i]),
                             topics[i] ) );
                     returnStatus = subscribeToTopic( mqttContext , topics[i] );
+
+                    /* Process incoming packet. */
+                    returnStatus = waitForPacketAck( mqttContext,
+                                                    globalSubscribePacketIdentifier,
+                                                    MQTT_PROCESS_LOOP_TIMEOUT_MS );
+                    if( returnStatus != EXIT_FAILURE ) {
+                        LogInfo(( "Subscribed to the topic %.*s.",
+                                strlen(topics[i]),
+                                topics[i] ));
+                    }
+
                 }
             }
 
