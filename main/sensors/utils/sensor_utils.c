@@ -23,7 +23,7 @@ void create_sensor_task(char *task_name, TaskFunction_t task_job , mqtt_queues_t
   *   Decorator wrapper for the sensor task
   *
   */
-void task_job_guard(void *args) {
+static void task_job_guard(void *args) {
     task_config_t *task_config = (task_config_t *) args;
     ESP_LOGI(MESH_TAG, "STARTED: %s", task_config->task_name);
     // execute task job

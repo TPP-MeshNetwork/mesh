@@ -16,6 +16,6 @@ typedef struct {
 } task_config_t;
 
 void create_sensor_task(char *task_name, TaskFunction_t task_job , mqtt_queues_t *mqtt_queues);
-void task_job_guard(void *args);
+static void task_job_guard(void *args);
 
 #endif // SENSOR_UTILS_H
