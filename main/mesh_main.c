@@ -224,7 +224,7 @@ void task_notify_new_user_connected(void *args) {
         for (int i = 0; i < 5; i++) {
             uint8_t macAp[6];
             esp_wifi_get_mac(WIFI_IF_AP, macAp);
-            asprintf(&device_id_msg, "{\"mesh_id\": \"%s\", \"email\": \"%s\", \"account_role\": \"owner\"}", MESH_TAG, EMAIL);
+            asprintf(&device_id_msg, "{\"mesh_id\": \"%s\", \"email\": \"%s\", \"account_role\": \"owner\", \"referer\":  \"%s\"}", MESH_TAG, EMAIL, EMAIL);
 
             ESP_LOGI(MESH_TAG, "Trying to queue message: %s", device_id_msg);
             if (mqtt_queues->mqttPublisherQueue != NULL) {
