@@ -9,9 +9,11 @@
 
 extern int queueSize;
 extern int suscriberQueueSize;
+#define MAX_TOPIC_LENGTH 255
+#define MAX_MESSAGE_LENGTH 512
 
 typedef struct {
-    char topic[255];                    /* key topic */
+    char topic[MAX_TOPIC_LENGTH];                    /* key topic */
     QueueHandle_t queue;       /* value */
     void (*event_handler)(char*topic, char *message); /* event handler function pointer */
     UT_hash_handle hh;         /* makes this structure hashable */
@@ -26,8 +28,8 @@ typedef struct {
 } mqtt_queues_t;
 
 typedef struct {
-    char message[255];
-    char topic[255];
+    char message[MAX_MESSAGE_LENGTH];
+    char topic[MAX_TOPIC_LENGTH];
 } mqtt_message_t;
 
 void init_suscriber_hash();
@@ -37,6 +39,6 @@ void suscriber_add_topic(char *topic, void (*event_handler)(char* topic, char* m
 SuscriptionTopicsHash_t * suscriber_find_topic(const char* topic);
 void suscriber_delete_topic(SuscriptionTopicsHash_t *s);
 void suscriber_add_message(const char* topic, const char* message);
-void suscriber_get_message(const char* topic);
+char * suscriber_get_message(const char* topic);
 
 #endif

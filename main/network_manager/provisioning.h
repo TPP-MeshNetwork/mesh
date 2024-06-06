@@ -17,6 +17,8 @@
 #define UNCONFIGURED_FLAG 0
 #define CONFIGURED_FLAG 1
 
+#define NETWORK_MANAGER_PERSISTENCE_NAMESPACE "network_manager"
+
 typedef void (ConfigCallback)(char* ssid, uint8_t channel, char* password, char* mesh_name, char* email);
 
 esp_err_t app_wifi_init(void);

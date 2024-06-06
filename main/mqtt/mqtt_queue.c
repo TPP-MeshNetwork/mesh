@@ -52,7 +52,8 @@ SuscriptionTopicsHash_t * suscriber_find_topic(const char * topic) {
 /* suscriber_get_message
 *  Description: Gets a message from the queue of a topic
 */
-void suscriber_get_message(const char *topic) {
+char * suscriber_get_message(const char *topic) {
+    char * message = NULL;
     SuscriptionTopicsHash_t *s = suscriber_find_topic(topic);
     xSemaphoreTake(xHashMutex, portMAX_DELAY); // Important! need to lock the hash so that no two processes can access the same topic
     if (s != NULL) {
@@ -64,14 +65,15 @@ void suscriber_get_message(const char *topic) {
                 ESP_LOGE("[suscriber_get_message]", "--->>>>> pointer message: %p", &s_message);
                 ESP_LOGI("[suscriber_get_message]", "Message: %s", s_message.message);
                 ESP_LOGI("[suscriber_get_message]", "Topic: %s", s_message.topic);
-                if (s->event_handler != NULL) 
-                    s->event_handler(s_message.topic, s_message.message);
+                message = (char *) calloc((sizeof(char)) * MAX_MESSAGE_LENGTH, 1);
+                strcpy(message, s_message.message);
             } else {
                 ESP_LOGI("SUSCRIBER", "Failed to receive message from queue");
             }
         }
     }
     xSemaphoreGive(xHashMutex);
+    return message;
 }
 
 /* suscriber_add_message

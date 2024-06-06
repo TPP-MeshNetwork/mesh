@@ -60,7 +60,7 @@ static void ip_event_handler(void *arg, esp_event_base_t event_base, int32_t eve
 static void event_handler(void *arg, esp_event_base_t event_base,
                           int32_t event_id, void *event_data)
 {
-    ESP_LOGI(MESH_TAG, "+++++++++++++++++++++EVENTO++++++++++++ %ld %s", event_id, event_base);
+    ESP_LOGI(MESH_TAG, "+++++++++++++++++++++ EVENT ++++++++++++ %ld %s", event_id, event_base);
     if (event_base == WIFI_EVENT)
     {
         wifi_event_handler(arg, event_base, event_id, event_data);
@@ -121,7 +121,7 @@ static wifi_scan_result_t scan_networks()
         result.ssids[i] = strdup((char *)ap_records[i].ssid);
         result.channels[i] = ap_records[i].primary;
 
-        ESP_LOGI("scan_wifi_networks", "ENCONTRE:....SSID: %s, Channel: %d", result.ssids[i], result.channels[i]);
+        ESP_LOGI("scan_wifi_networks", "Found SSID: %s, Channel: %d", result.ssids[i], result.channels[i]);
     }
     free(ap_records); // Free memory for AP records
 
@@ -330,7 +330,7 @@ handler_args_t extra_args = {
 static httpd_handle_t start_webserver(void* callback) {
     ESP_ERROR_CHECK( mdns_init() );
     ESP_ERROR_CHECK( mdns_hostname_set("milos") );
-    ESP_LOGI(MESH_TAG, "mdns hostname set to: [%s]", "milos");
+    ESP_LOGI(MESH_TAG, "mdns hostname set to: [%s]", "milos.local");
     ESP_ERROR_CHECK( mdns_instance_name_set("Milos network provisioning") );
     ESP_ERROR_CHECK(mdns_service_add(NULL, "_http", "_tcp", 80, NULL, 0));
 
@@ -422,7 +422,7 @@ void network_manager_callback(char *ssid, uint8_t channel, char *password, char 
     ESP_LOGI(MESH_TAG, "[network_manager_callback] called");
     // TODO: hide password from logs 
     ESP_LOGI(MESH_TAG, "[network_manager_callback] Received config Wi-Fi SSID: %s, Channel: %d, Password: ******, Mesh Name: %s, Email: %s", ssid, channel, mesh_name, email);
-    persistence_handler_t handler = persistence_open();
+    persistence_handler_t handler = persistence_open(NETWORK_MANAGER_PERSISTENCE_NAMESPACE);
     persistence_set_str(handler, "ssid", ssid);
     persistence_set_str(handler, "password", password);
     persistence_set_u8(handler, "channel", channel);

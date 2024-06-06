@@ -29,6 +29,7 @@
 #include "performance/performance.h"
 #include "sensors/tasks/sensor_tasks.h"
 #include "sensors/utils/sensor_utils.h"
+#include "tasks_config/tasks_config.h"
 
 /*******************************************************
  *                Macros
@@ -89,66 +90,6 @@ void static recv_cb(mesh_addr_t *from, mesh_data_t *data) {
     }
 }
 
-// void task_read_sensor_dh11(void *args) {
-//     ESP_LOGI(MESH_TAG, "STARTED: task_read_sensor_dh11");
-//     mqtt_queues_t *mqtt_queues = (mqtt_queues_t *)args;
-//     char *sensor_message;
-//     const int max_tries = 10;
-//     int tries = 0;
-
-//     const char *sensor_name[DHT11_SENSOR_COUNT] = {"temperature", "humidity"};
-
-//     char * sensor_topic[DHT11_SENSOR_COUNT] = {
-//         create_topic("sensor", "temperature", true),
-//         create_topic("sensor", "humidity", true)
-//     };
-
-//     size_t sensor_length = sizeof(sensor_name) / sizeof(sensor_name[0]);
-
-//     bool mocked = true;
-//     float sensor_data[DHT11_SENSOR_COUNT] = {20.0f, 75.0f}; // initial values
-
-//     while (1) {
-//         if (mocked) {
-            
-//             mockDh11SensorData(sensor_data, sensor_name);
-
-//             ESP_LOGI(MESH_TAG, "%s: %.1fC\n", sensor_name[0], sensor_data[0]);
-//         }
-//         else if (dht_read_float_data(SENSOR_TYPE, CONFIG_EXAMPLE_DATA_GPIO, sensor_data + 1, sensor_data) == ESP_OK)
-//         {
-//             ESP_LOGI(MESH_TAG, "%s: %.1fC\n", sensor_name[0], sensor_data[0]);
-//         }
-//         else {
-//             // stopping reading sensor if it fails too many times
-//             tries++;
-//             if (tries > max_tries)
-//                 break;
-//             ESP_LOGI(MESH_TAG, "Could not read data from sensor\n");
-//             vTaskDelay(pdMS_TO_TICKS(1000));
-//             continue;
-//         }
-
-//         for (size_t i = 0; i < sensor_length; i++) {
-//             asprintf(&sensor_message, " \"sensor_type\": \"%s\", \"sensor_value\": %.1f ", sensor_name[i], sensor_data[i]);
-//             char *message = create_message(sensor_message);
-
-//             ESP_LOGI(MESH_TAG, "Trying to queue message: %s", message);
-//             if (mqtt_queues->mqttPublisherQueue != NULL) {
-//                 publish(sensor_topic[i], message);
-//                 ESP_LOGI(MESH_TAG, "queued done: %s", message);
-//             }
-//             free(message);
-//             free(sensor_message);
-//         }
-
-//         vTaskDelay(pdMS_TO_TICKS(10000));
-//     }
-//     free(sensor_topic[0]);
-//     free(sensor_topic[1]);
-//     vTaskDelete(NULL);
-// }
-
 void task_mesh_table_routing(void *args) {
     ESP_LOGI(MESH_TAG, "STARTED: task_mesh_table_routing");
     is_running = true;
@@ -174,7 +115,7 @@ void task_mesh_table_routing(void *args) {
     vTaskDelete(NULL);
 }
 
-void concatenateSensorNames(const char *sensor_name[], int size, char result[]) {
+void concatenateMetricNames(const char *sensor_name[], int size, char result[]) {
     for (int i = 0; i < size; i++) {
         strcat(result, "\"");
         strcat(result, sensor_name[i]);
@@ -193,13 +134,13 @@ void task_notify_new_device_id(void *args) {
     char *device_id_msg;
 
     char * device_topic = create_topic("devices", "report", false);
-    const char *sensor_name[2] = {"temperature", "humidity"};
+    const char *metric_names[2] = {"temperature", "humidity"};
     char result[100] = ""; // Initialize result string
 
     while (1) {
         uint8_t macAp[6];
         esp_wifi_get_mac(WIFI_IF_AP, macAp);
-        concatenateSensorNames(sensor_name, sizeof(sensor_name) / sizeof(sensor_name[0]), result);
+        concatenateMetricNames(metric_names, sizeof(metric_names) / sizeof(metric_names[0]), result);
         asprintf(&device_id_msg, "{\"mesh_id\": \"%s\", \"device_id\": \"" MACSTR "\", \"sensor_metrics\": [%s]}", MESH_TAG, MAC2STR(macAp), result);
 
         ESP_LOGI(MESH_TAG, "Trying to queue message: %s", device_id_msg);
@@ -354,7 +295,7 @@ void task_mqtt_client_start(void *args) {
             mqtt_connection_status = EXIT_FAILURE;
         }
         free(buffer);
-        vTaskDelay(3000 / portTICK_PERIOD_MS);
+        vTaskDelay(500 / portTICK_PERIOD_MS);
     }
     vTaskDelete(NULL);
 }
@@ -370,7 +311,18 @@ void task_suscribers_events(void *args) {
         for(size_t i = 0; topics_list[i] != NULL; i++) {
             char * topic = topics_list[i];
             // suscriber_get_message handles also the correct event handler
-            suscriber_get_message(topic);
+            char * message = suscriber_get_message(topic);
+            SuscriptionTopicsHash_t *s = suscriber_find_topic(topic);
+            if (s != NULL) {
+                if (message != NULL) {
+                    ESP_LOGI(MESH_TAG, "Received message from topic: %s", topic);
+                    ESP_LOGI(MESH_TAG, "Message: %s", message);
+                    if (s->event_handler != NULL) {
+                        s->event_handler(topic, message);
+                    }
+                    free(message);
+                }
+            }
         }
         vTaskDelay(100 / portTICK_PERIOD_MS);   
     }
@@ -401,13 +353,20 @@ esp_err_t esp_tasks_runner(void) {
         xTaskCreate(task_mesh_table_routing, "mqtt routing-table", 2048, NULL, 5, NULL);
         vTaskDelay(5000 / portTICK_PERIOD_MS);
         xTaskCreate(task_mqtt_client_start, "mqtt task-aws", 8096, (void *)mqtt_queues, 5, NULL);
-        xTaskCreate(task_suscribers_events, "Task that reads suscription events", 4096, NULL, 5, NULL);
+        xTaskCreate(task_suscribers_events, "Task that reads suscription events", 8096, NULL, 5, NULL);
         
         vTaskDelay(2000 / portTICK_PERIOD_MS);
-        create_sensor_task("task_sensor_dh11", task_sensor_dh11, (void *) mqtt_queues);
-        xTaskCreate(task_mqtt_graph, "Graph logging task", 3072, (void *)mqtt_queues, 5, NULL);
-        xTaskCreate(task_notify_new_device_id, "Notify new device in mesh", 3072, (void *)mqtt_queues, 5, NULL);
-        xTaskCreate(task_notify_new_user_connected, "Notify new user mail connected", 3072, (void *)mqtt_queues, 5, NULL);
+        char * sensor_metrics[] = {"temperature", "humidity", NULL};
+
+        create_sensor_task("task_sensor_dht11", "dht11", sensor_metrics ,task_sensor_dht11, (void *) mqtt_queues, (Config_t) {
+            .max_polling_time = 0,  // 0 means no max time restriction
+            .min_polling_time = 1000, // 1 second
+            .polling_time = 10000, // 10 seconds
+            .active = 1 // active
+        });
+        // xTaskCreate(task_mqtt_graph, "Graph logging task", 3072, (void *)mqtt_queues, 5, NULL);
+        // xTaskCreate(task_notify_new_device_id, "Notify new device in mesh", 3072, (void *)mqtt_queues, 5, NULL);
+        // xTaskCreate(task_notify_new_user_connected, "Notify new user mail connected", 3072, (void *)mqtt_queues, 5, NULL);
         is_comm_mqtt_task_started = true;
     }
     return ESP_OK;
@@ -651,7 +610,7 @@ void ip_event_handler(void *arg, esp_event_base_t event_base,
 }
 
 void app_start(void) {
-    persistence_handler_t handler = persistence_open();
+    persistence_handler_t handler = persistence_open(NETWORK_MANAGER_PERSISTENCE_NAMESPACE);
     char* ssid = NULL;
     char* pwd = NULL;
     uint8_t channel = 0;
@@ -664,7 +623,7 @@ void app_start(void) {
     if (ssid == NULL || pwd == NULL || EMAIL == NULL) {
         ESP_LOGE("esp32", "[app_start] Error: Network manager not configured");
         vTaskDelay(10000 / portTICK_PERIOD_MS);
-        persistence_erase_namespace();
+        persistence_erase_namespace(NETWORK_MANAGER_PERSISTENCE_NAMESPACE);
         esp_restart();
     }
 
@@ -745,7 +704,7 @@ void check_pin_status() {
                     if (now - last_time > 5) {
                         ESP_LOGI(MESH_TAG, "[check_pin_status] >>> Button release detected <<<");
                         ESP_LOGI(MESH_TAG, "[check_pin_status] Erasing persistence and restarting the device");
-                        persistence_erase_namespace();
+                        persistence_erase_namespace(NETWORK_MANAGER_PERSISTENCE_NAMESPACE);
                         esp_restart();
                     }
                 } else {
@@ -782,7 +741,7 @@ void app_main(void) {
     } else {
         ESP_LOGI(MESH_TAG, "[app_main] Persistence initialized successfully");
         //TODO: Check for possible errors and act accordingly
-        persistence_handler_t handler = persistence_open();
+        persistence_handler_t handler = persistence_open(NETWORK_MANAGER_PERSISTENCE_NAMESPACE);
         uint8_t is_configured;
         persistence_err = persistence_get_u8(handler, "configured", &is_configured);
         if (is_configured == CONFIGURED_FLAG) {

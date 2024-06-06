@@ -1,32 +1,72 @@
 #include "sensor_utils.h"
 
 /*
-  * Function: create_sensor_task
-  * ----------------------------
-  *   Creates a new sensor task
-  *
-  */
-void create_sensor_task(char *task_name, TaskFunction_t task_job , mqtt_queues_t *mqtt_queues) {
-
-    task_config_t *task_config = malloc(sizeof(task_config_t));
-    task_config->task_job = task_job; // adding task job so that it can be executed with the guard task
-    task_config->task_name = task_name;
-    task_config->mqtt_queues = mqtt_queues;
-    // TODO: ADD CONFIG FOR THE TASK
-
-    xTaskCreate(task_job_guard, task_name, 3072, (void *) task_config, 5, NULL);
-}
-
-/*
   * Function: task_job_guard
   * ----------------------------
   *   Decorator wrapper for the sensor task
   *
   */
 static void task_job_guard(void *args) {
-    task_config_t *task_config = (task_config_t *) args;
-    ESP_LOGI(MESH_TAG, "STARTED: %s", task_config->task_name);
+    sensor_task_t *sensor_task = (sensor_task_t *) args;
+    ESP_LOGI(MESH_TAG, "STARTED: %s", sensor_task->task_name);
+
+    // get task args
+    TaskJobArgs_t *task_args = malloc(sizeof(TaskJobArgs_t));
+    task_args->id = get_task_id_by_name(sensor_task->task_name);
+    task_args->mqtt_queues = sensor_task->mqtt_queues;
     // execute task job
-    task_config->task_job((void *) task_config->mqtt_queues);
-    free(task_config);
+    sensor_task->task_job((void *) task_args);
+    free(sensor_task);
 }
+
+/*
+  * Function: create_sensor_task
+  * ----------------------------
+  *   Creates a new sensor task
+  *
+  */
+void create_sensor_task(char *task_name, char * sensor_type, char * sensor_metrics[] ,TaskFunction_t task_job , mqtt_queues_t *mqtt_queues, Config_t config) {
+
+    sensor_task_t *sensor_task = malloc(sizeof(sensor_task_t));
+    sensor_task->task_job = task_job; // adding task job so that it can be executed with the guard task
+    sensor_task->task_name = task_name;
+    sensor_task->mqtt_queues = mqtt_queues;
+
+    // add task mapping task_name to id
+    int task_id = add_task_mapping(task_name, sensor_metrics);
+    
+    if (task_id == -1) {
+        ESP_LOGI(MESH_TAG, "Task mapping already exists");
+        return;
+    }
+    // adding task config to the tasks_config
+    add_task_config(task_id, sensor_type, config);
+
+    // load values from nvs if exists
+    esp_err_t ret = load_task_config(task_id);
+    if (ret == ESP_ERR_NVS_NOT_FOUND) {
+        // Trying to save the config 
+        save_task_config(task_id);
+    } else {
+        ESP_LOGI(MESH_TAG, "Loaded config from NVS");
+    }
+
+    xTaskCreate(task_job_guard, task_name, 3072, (void *) sensor_task, 5, NULL);
+}
+
+/*
+  * Function: get_sensor_count
+  * ----------------------------
+  *   Get the sensor count
+  *
+*/
+size_t get_sensor_count(char * sensor_metrics[]) {
+    size_t count = 0;
+    for (size_t i = 0; sensor_metrics[i] != NULL; i++) {
+        count++;
+    }
+    return count;
+}
+
+
+
