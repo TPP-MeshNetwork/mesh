@@ -79,7 +79,7 @@ void static recv_cb(mesh_addr_t *from, mesh_data_t *data) {
         xSemaphoreTake(s_route_table_lock, portMAX_DELAY);
         s_route_table_size = size / 6;
         for (int i = 0; i < s_route_table_size; ++i) {
-            ESP_LOGI(MESH_TAG, "Received Routing table [%d] " MACSTR, i, MAC2STR(data->data + 6 * i + 1));
+            ESP_LOGD(MESH_TAG, "Received Routing table [%d] " MACSTR, i, MAC2STR(data->data + 6 * i + 1));
         }
         memcpy(&s_route_table, data->data + 1, size);
         xSemaphoreGive(s_route_table_lock);
@@ -107,7 +107,7 @@ void task_mesh_table_routing(void *args) {
             data.data = s_mesh_tx_payload;
             for (int i = 0; i < s_route_table_size; i++) {
                 err = esp_mesh_send(&s_route_table[i], &data, MESH_DATA_P2P, NULL, 0);
-                ESP_LOGI(MESH_TAG, "Sending routing table to [%d] " MACSTR ": sent with err code: %d", i, MAC2STR(s_route_table[i].addr), err);
+                ESP_LOGD(MESH_TAG, "Sending routing table to [%d] " MACSTR ": sent with err code: %d", i, MAC2STR(s_route_table[i].addr), err);
             }
         }
         vTaskDelay(2 * 1000 / portTICK_PERIOD_MS);
