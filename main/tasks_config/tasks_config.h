@@ -8,6 +8,7 @@
 #include "string.h"
 #include "../utils/uthash.h"
 #include "nvs_flash.h"
+#include "cJSON.h"
 
 #define TASKS_NAME_SIZE 255
 #define TASKS_CONFIG_PERSISTENCE_NAMESPACE "tasks_config"
@@ -42,10 +43,13 @@ Config_t ** get_all_tasks_config();
 void save_task_config(int task_id);
 esp_err_t load_task_config(int task_id);
 
-// task names mapping functions
+// tasks mapping functions
 int get_task_id_by_name(char * task_name);
 char * get_task_name_by_id(int id);
 int add_task_mapping(char * task_name, char * sensor_metrics[]);
 char ** get_sensor_metrics_by_task_id(int id);
+int ** get_all_tasks_ids();
+
+cJSON * get_all_tasks_metrics_json();
 
 #endif // TASKS_CONFIG_H

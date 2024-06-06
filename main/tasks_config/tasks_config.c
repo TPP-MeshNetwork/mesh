@@ -298,3 +298,63 @@ char ** get_sensor_metrics_by_task_id(int id) {
     HASH_FIND_STR(tasks_mapping, task_name, ret_task_mapping);
     return ret_task_mapping->sensor_types;
 }
+
+/*
+    * Function: get_all_tasks_ids
+    * ----------------------------
+    *  Get all the tasks ids
+    *   
+    * returns: int **
+*/
+int ** get_all_tasks_ids() {
+    if (HASH_COUNT(tasks_mapping) == 0) {
+        return NULL;
+    }
+    int **tasks_ids = (int **) malloc(sizeof(int *) * HASH_COUNT(tasks_mapping) + 1);
+    TasksMapping_t *task_mapping, *tmp;
+    int i = 0;
+    HASH_ITER(hh, tasks_mapping, task_mapping, tmp) {
+        tasks_ids[i] = (int *) malloc(sizeof(int));
+        tasks_ids[i] = &task_mapping->id;
+        i++;
+    }
+    tasks_ids[i] = NULL;
+    return tasks_ids;
+}
+
+/*
+    * Function: get_all_tasks_metrics_json
+    * ----------------------------
+    *  Get all the tasks metrics in json format
+    *   
+    * returns: cJSON *
+*/
+cJSON * get_all_tasks_metrics_json() {
+    cJSON *tasks_array = cJSON_CreateArray();
+
+    TasksMapping_t *task_mapping, *tmp;
+    HASH_ITER(hh, tasks_mapping, task_mapping, tmp) {
+        cJSON * task_object = cJSON_CreateObject();
+
+        // Adding task ID
+        cJSON_AddItemToObject(task_object, "id", cJSON_CreateNumber(task_mapping->id));
+
+        // Adding task name
+        cJSON_AddItemToObject(task_object, "name", cJSON_CreateString(task_mapping->task_name));
+
+        // Creating an array for sensor metrics
+        cJSON * sensor_metrics_array = cJSON_CreateArray();
+        char ** sensor_metrics_ = task_mapping->sensor_types;
+        for (int i = 0; sensor_metrics_[i] != NULL; i++) {
+            cJSON_AddItemToArray(sensor_metrics_array, cJSON_CreateString(sensor_metrics_[i]));
+        }
+        cJSON_AddItemToObject(task_object, "metrics", sensor_metrics_array);
+        cJSON_AddItemToArray(tasks_array, task_object);
+    }
+
+    // Create a JSON object to hold the tasks array
+    cJSON * tasks_object = cJSON_CreateObject();
+    cJSON_AddItemToObject(tasks_object, "tasks", tasks_array);
+
+    return tasks_object;
+}

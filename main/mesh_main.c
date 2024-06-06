@@ -30,6 +30,7 @@
 #include "sensors/tasks/sensor_tasks.h"
 #include "sensors/utils/sensor_utils.h"
 #include "tasks_config/tasks_config.h"
+#include "utils.h"
 
 /*******************************************************
  *                Macros
@@ -44,7 +45,6 @@ char * MESH_TAG = "esp32-mesh";
 static char * EMAIL = "";
 // MESH ID must be a 6-byte array to identify the mesh network and its created from the first 6 bytes of the MESH_TAG
 static uint8_t MESH_ID[6] = { 0x65, 0x73, 0x70, 0x33, 0x32, 0x2D};
-
 
 /*******************************************************
  *                Variable Definitions for Mesh
@@ -131,18 +131,21 @@ void concatenateMetricNames(const char *sensor_name[], int size, char result[]) 
 void task_notify_new_device_id(void *args) {
     ESP_LOGI(MESH_TAG, "STARTED: task_notify_new_device_id");
     mqtt_queues_t *mqtt_queues = (mqtt_queues_t *) args;
-    char *device_id_msg;
 
     char * device_topic = create_topic("devices", "report", false);
-    const char *metric_names[2] = {"temperature", "humidity"};
-    char result[100] = ""; // Initialize result string
+
+    uint8_t macAp[6];
+    esp_wifi_get_mac(WIFI_IF_AP, macAp);
+    
+    cJSON * device_id = cJSON_CreateObject();
+    cJSON_AddStringToObject(device_id, "mesh_id", MESH_TAG);
+    cJSON_AddStringToObject(device_id, "device_id", mac_to_hex_string(macAp));
+    cJSON * tasks_metrics = get_all_tasks_metrics_json();
+    cJSON_AddItemToObject(device_id, "tasks_metrics", tasks_metrics);
+
+    char * device_id_msg = cJSON_Print(device_id);
 
     while (1) {
-        uint8_t macAp[6];
-        esp_wifi_get_mac(WIFI_IF_AP, macAp);
-        concatenateMetricNames(metric_names, sizeof(metric_names) / sizeof(metric_names[0]), result);
-        asprintf(&device_id_msg, "{\"mesh_id\": \"%s\", \"device_id\": \"" MACSTR "\", \"sensor_metrics\": [%s]}", MESH_TAG, MAC2STR(macAp), result);
-
         ESP_LOGI(MESH_TAG, "Trying to queue message: %s", device_id_msg);
         if (mqtt_queues->mqttPublisherQueue != NULL) {
             publish(device_topic, device_id_msg);
@@ -152,6 +155,7 @@ void task_notify_new_device_id(void *args) {
         vTaskDelay(24 * 3600 * 1000 / portTICK_PERIOD_MS);
     }
     free(device_topic);
+    free(device_id_msg);
     vTaskDelete(NULL);
 }
 
@@ -365,7 +369,7 @@ esp_err_t esp_tasks_runner(void) {
             .active = 1 // active
         });
         // xTaskCreate(task_mqtt_graph, "Graph logging task", 3072, (void *)mqtt_queues, 5, NULL);
-        // xTaskCreate(task_notify_new_device_id, "Notify new device in mesh", 3072, (void *)mqtt_queues, 5, NULL);
+        xTaskCreate(task_notify_new_device_id, "Notify new device in mesh", 3072, (void *)mqtt_queues, 5, NULL);
         // xTaskCreate(task_notify_new_user_connected, "Notify new user mail connected", 3072, (void *)mqtt_queues, 5, NULL);
         is_comm_mqtt_task_started = true;
     }
