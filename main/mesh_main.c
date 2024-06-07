@@ -350,7 +350,7 @@ esp_err_t esp_tasks_runner(void) {
         ESP_LOGI(MESH_TAG, "Error creating the mqttPublisherQueue");
     }
 
-    /* Adding topics that we want to subscribe to */å
+    /* Adding topics that we want to subscribe to */
     /* Config */
     suscriber_add_topic(create_topic("config", "", false), suscriber_global_config_handler);
     suscriber_add_topic(create_topic("config", "", true), suscriber_particular_config_handler);

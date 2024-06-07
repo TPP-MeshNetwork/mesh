@@ -4,6 +4,7 @@
 *   Publishes on the topic: /mesh/[mesh_id]/devices/[device_id]/dashboard/relay
 */
 #include "suscription_event_handlers.h"
+#include "driver/gpio.h"
 
 // GPIO pins
 #define RELAY1_PIN 2
@@ -25,7 +26,7 @@ int read_pin(int pin) {
   *
 */
 void relay_event_handler(char* action, char* type, char *payload) {
-    ESP_LOGI(MESH_TAG, "Relay event handler");
+    ESP_LOGI("[relay_event_handler]", "Relay event handler");
     if (!strcmp(type, "relay")) {
         if (!strcmp(action, "read")) {
             // Read the relay configuration
@@ -83,17 +84,17 @@ void relay_event_handler(char* action, char* type, char *payload) {
             // Minified Example:
             // {"action":"write","sender_client_id":"iotconsole-a7124307-8b16-4083-ad16-a23a60eb898b","type":"relay","payload":{"relay_id":1,"state":1}}
 
-            cJSON *payloadObj = cJSON_Parse(payload);
-            cJSON *payloadObjPayload = cJSON_GetObjectItem(payloadObj, "payload");
+            cJSON *reqObj = cJSON_Parse(payload);
+            cJSON *payloadReq = cJSON_GetObjectItem(reqObj, "payload");
 
             // Getting the relay_id and state
-            int relay_id = cJSON_GetObjectItem(payloadObjPayload, "relay_id")->valueint;
-            int state = cJSON_GetObjectItem(payloadObjPayload, "state")->valueint;
+            int relay_id = cJSON_GetObjectItem(payloadReq, "relay_id")->valueint;
+            int state = cJSON_GetObjectItem(payloadReq, "state")->valueint;
 
             // Check values of state
             if (state != 0 && state != 1) {
-                ESP_LOGE(MESH_TAG, "Invalid state value");
-                free(payloadObj);
+                ESP_LOGE("[relay_event_handler]", "Invalid state value");
+                cJSON_Delete(reqObj);
                 return;
             }
 

@@ -8,7 +8,8 @@ idf_component_register(SRCS # Main files Mesh
                             "mqtt/client/mqtt_mutual_auth.c"
                             "mqtt/utils/mqtt_utils.c"
                             "mqtt/mqtt_queue.c"
-                            "suscription_handlers/suscription_event_handlers.c"
+                            "suscription_handlers/config_event_handlers.c"
+                            "suscription_handlers/relay_event_handlers.c"
                             # Sensor files Libraries
                             "components/dht.c"
                             "sensors/utils/sensor_utils.c"
@@ -18,7 +19,7 @@ idf_component_register(SRCS # Main files Mesh
                             # Tasks config files
                             "tasks_config/tasks_config.c"
                             # Utils files
-                            "utils/utils.c"
+                            "utils/utils.c"                            
                      INCLUDE_DIRS "." 
                                  "mesh_netif"
                                  "mqtt"
