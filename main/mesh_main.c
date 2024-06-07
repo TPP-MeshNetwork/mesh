@@ -140,8 +140,9 @@ void task_notify_new_device_id(void *args) {
     cJSON * device_id = cJSON_CreateObject();
     cJSON_AddStringToObject(device_id, "mesh_id", MESH_TAG);
     cJSON_AddStringToObject(device_id, "device_id", mac_to_hex_string(macAp));
-    cJSON * tasks_metrics = get_all_tasks_metrics_json();
-    cJSON_AddItemToObject(device_id, "tasks_metrics", tasks_metrics);
+    cJSON * tasks_array = get_all_tasks_metrics_json();
+    cJSON_AddItemToObject(device_id, "tasks", tasks_array);
+
 
     char * device_id_msg = cJSON_Print(device_id);
 
@@ -349,9 +350,12 @@ esp_err_t esp_tasks_runner(void) {
         ESP_LOGI(MESH_TAG, "Error creating the mqttPublisherQueue");
     }
 
-    // add topic that we want to subscribe to
-    suscriber_add_topic(create_topic("config", "", false), suscriber_global_config_handler); // topic config read from dashboard /mesh/<meshid>/config
-    suscriber_add_topic(create_topic("config", "", true), suscriber_particular_config_handler); // topic config bidirectional /mesh/<meshid>/device/<deviceId>/config
+    /* Adding topics that we want to subscribe to */å
+    /* Config */
+    suscriber_add_topic(create_topic("config", "", false), suscriber_global_config_handler);
+    suscriber_add_topic(create_topic("config", "", true), suscriber_particular_config_handler);
+    /* Relay */
+    suscriber_add_topic(create_topic("relay", "", true), relay_event_handler);
 
     if (!is_comm_mqtt_task_started) {
         xTaskCreate(task_mesh_table_routing, "mqtt routing-table", 2048, NULL, 5, NULL);
