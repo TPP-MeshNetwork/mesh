@@ -1,4 +1,8 @@
-/* This file contains the event handlers for the suscriptions
+/* 
+*   This file contains the event handlers for the suscriptions
+*   Particular Topic: /mesh/[mesh_id]/devices/[device_id]/config
+*   Global Topic: /mesh/[mesh_id]/config
+*   Publishes on different topic: /mesh/[mesh_id]/dashboard/config
 */
 #include "suscription_event_handlers.h"
 
