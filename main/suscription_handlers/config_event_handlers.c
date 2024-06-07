@@ -226,11 +226,15 @@ void suscriber_global_config_handler(char* topic, char* message) {
     char* action = cJSON_GetObjectItem(root,"action")->valuestring;
     // get the type
     char* type = cJSON_GetObjectItem(root,"type")->valuestring;
-    // get the payload
-    cJSON *payload = cJSON_GetObjectItem(root,"payload");
 
-    char *payload_str = cJSON_Print(payload);
-    ESP_LOGI("[suscriber_particular_config_handler]", "Payload: %s", payload_str);
+    // get the payload only if the action is write
+    char *payload_str = NULL;
+    if (!strcmp(action, "write")) {
+        // get the payload
+        cJSON *payload = cJSON_GetObjectItem(root,"payload");
+        payload_str = cJSON_Print(payload);
+        ESP_LOGI("[suscriber_particular_config_handler]", "Payload: %s", payload_str);
+    }
 
     if (!strcmp(type, "config")) {
         new_config_message(action, type, payload_str);
