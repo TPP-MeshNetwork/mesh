@@ -351,10 +351,5 @@ cJSON * get_all_tasks_metrics_json() {
         cJSON_AddItemToObject(task_object, "metrics", sensor_metrics_array);
         cJSON_AddItemToArray(tasks_array, task_object);
     }
-
-    // Create a JSON object to hold the tasks array
-    cJSON * tasks_object = cJSON_CreateObject();
-    cJSON_AddItemToObject(tasks_object, "tasks", tasks_array);
-
-    return tasks_object;
+    return tasks_array;
 }
