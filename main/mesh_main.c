@@ -394,9 +394,9 @@ esp_err_t esp_tasks_runner(void) {
             .polling_time = 10000, // 10 seconds
             .active = 1 // active
         });
-        // xTaskCreate(task_mqtt_graph, "Graph logging task", 3072, (void *)mqtt_queues, 5, NULL);
+        xTaskCreate(task_mqtt_graph, "Graph logging task", 3072, (void *)mqtt_queues, 5, NULL);
         xTaskCreate(task_notify_new_device_id, "Notify new device in mesh", 3072, (void *)mqtt_queues, 5, NULL);
-        // xTaskCreate(task_notify_new_user_connected, "Notify new user mail connected", 3072, (void *)mqtt_queues, 5, NULL);
+        xTaskCreate(task_notify_new_user_connected, "Notify new user mail connected", 3072, (void *)mqtt_queues, 5, NULL);
         is_comm_mqtt_task_started = true;
     }
     return ESP_OK;
