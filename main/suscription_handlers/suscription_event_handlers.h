@@ -17,6 +17,13 @@ void suscriber_particular_config_handler(char* topic, char* message);
 /* relay_event_handler
 *  Description: Event handler for the relay suscription
 */
-void relay_event_handler(char* action, char* type, char *payload);
+void relay_event_handler(char* topic, char* message);
+void relay_init();
+
+typedef struct {
+    char *topic;
+    char *message;
+    void (*handler)(char*, char*);
+} suscription_event_handler_t;
 
 #endif // SUSCRIPTION_EVENT_HANDLERS_H

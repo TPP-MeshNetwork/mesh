@@ -2,7 +2,7 @@
 *   This file contains the event handlers for the suscriptions
 *   Particular Topic: /mesh/[mesh_id]/devices/[device_id]/config
 *   Global Topic: /mesh/[mesh_id]/config
-*   Publishes on different topic: /mesh/[mesh_id]/dashboard/config
+*   Publishes on different topic: /mesh/[mesh_id]/config/dashboard
 */
 #include "suscription_event_handlers.h"
 
@@ -47,109 +47,103 @@ void new_config_message(char* action, char* type, char *payload) {
         payloadObj = cJSON_Parse(payload);
     }
 
-    if (!strcmp(type, "config")) {
-        if (!strcmp(action, "read")) {
-            // Read the configuration
-            // Example:
-            // {
-            //     "action": "read",
-            //     "sender_client_id": "iotconsole-a7124307-8b16-4083-ad16-a23a60eb898b", 
-            //     "type": "config" 
-            // }
-            // Minified Example:
-            // {"action":"read","sender_client_id":"iotconsole-a7124307-8b16-4083-ad16-a23a60eb898b","type":"config"}
+    if (!strcmp(action, "read")) {
+        // Read the configuration
+        // Example:
+        // {
+        //     "action": "read",
+        //     "sender_client_id": "iotconsole-a7124307-8b16-4083-ad16-a23a60eb898b", 
+        //     "type": "config" 
+        // }
+        // Minified Example:
+        // {"action":"read","sender_client_id":"iotconsole-a7124307-8b16-4083-ad16-a23a60eb898b","type":"config"}
 
-            Config_t **config = get_all_tasks_config();
+        Config_t **config = get_all_tasks_config();
 
-            // print the config
-            for (size_t i = 0; config[i] != NULL; i++) {
-                ESP_LOGI("[new_config_message]", "Task: %d", config[i]->task_id);
-                ESP_LOGI("[new_config_message]", "Polling Time: %d", config[i]->polling_time);
-                ESP_LOGI("[new_config_message]", "Active: %d", config[i]->active);
-            }
+        // print the config
+        for (size_t i = 0; config[i] != NULL; i++) {
+            ESP_LOGI("[new_config_message]", "Task: %d", config[i]->task_id);
+            ESP_LOGI("[new_config_message]", "Polling Time: %d", config[i]->polling_time);
+            ESP_LOGI("[new_config_message]", "Active: %d", config[i]->active);
+        }
 
-            char * payload_str = create_read_sensor_response_json(config);
+        char * payload_str = create_read_sensor_response_json(config);
 
-            // print the payload
-            ESP_LOGI("[new_config_message]", "Payload: %s", payload_str);
-            asprintf(&message, "{\"action\": \"read\", \"sender_client_id\": \"%s\", \"type\": \"config\", \"payload\": %s }", clientIdentifier, payload_str);
-            free(payload_str);
-        } else if (!strcmp(action, "write")) {
-            // Write the configuration
-            // Example: 
-            // {
-            //     "action": "write",
-            //     "sender_client_id": "iotconsole-a7124307-8b16-4083-ad16-a23a60eb898b", 
-            //     "type": "config",
-            //     "payload": { 
-            //         "sensors": [{
-            //             "task_id": 1,
-            //             "pool": { "actual_time": 15000 },
-            //             "active": true
-            //         }]
-            //     }
-            // }
-            // Minified Example:
-            // {"action":"write","sender_client_id":"iotconsole-a7124307-8b16-4083-ad16-a23a60eb898b","type":"config","payload":{"sensors":[{"task_id":1,"pool":{"actual_time":15000},"active":true}]}}
+        // print the payload
+        ESP_LOGI("[new_config_message]", "Payload: %s", payload_str);
+        asprintf(&message, "{\"action\": \"read\", \"sender_client_id\": \"%s\", \"type\": \"config\", \"payload\": %s }", clientIdentifier, payload_str);
+        free(payload_str);
+    } else if (!strcmp(action, "write")) {
+        // Write the configuration
+        // Example: 
+        // {
+        //     "action": "write",
+        //     "sender_client_id": "iotconsole-a7124307-8b16-4083-ad16-a23a60eb898b", 
+        //     "type": "config",
+        //     "payload": { 
+        //         "sensors": [{
+        //             "task_id": 1,
+        //             "pool": { "actual_time": 15000 },
+        //             "active": true
+        //         }]
+        //     }
+        // }
+        // Minified Example:
+        // {"action":"write","sender_client_id":"iotconsole-a7124307-8b16-4083-ad16-a23a60eb898b","type":"config","payload":{"sensors":[{"task_id":1,"pool":{"actual_time":15000},"active":true}]}}
 
-            if (payloadObj == NULL) {
-                ESP_LOGE("[new_config_message]", "Error parsing JSON");
+        if (payloadObj == NULL) {
+            ESP_LOGE("[new_config_message]", "Error parsing JSON");
+            char *msg_payload;
+            asprintf(&msg_payload, "\"status\": \"ok\", \"message\": \"Error parsing JSON\"");
+            asprintf(&message, "{\"action\": \"write\", \"sender_client_id\": \"%s\", \"type\": \"config\", \"payload\": {%s}}", clientIdentifier, msg_payload);
+            publish(create_topic("config", "dashboard", false), message);
+            free(msg_payload);
+            return;
+        }
+        
+        // get sensors array
+        cJSON *sensors = cJSON_GetObjectItem(payloadObj,"sensors");
+        // get length of sensors array
+        int sensors_len = cJSON_GetArraySize(sensors);
+        for (int i = 0; i < sensors_len; i++) {
+            Config_t newConfig;
+            cJSON *sensor_config = cJSON_GetArrayItem(sensors, i);
+            newConfig.task_id = cJSON_GetObjectItem(sensor_config,"task_id")->valueint;
+            ESP_LOGW("[new_config_message]", "Writing config for task id: %d", newConfig.task_id);
+            newConfig.active = cJSON_GetObjectItem(sensor_config,"active")->valueint;
+
+            cJSON *pool = cJSON_GetObjectItem(sensor_config,"pool");
+            newConfig.polling_time = cJSON_GetObjectItem(pool,"actual_time")->valueint;
+
+            // check if task_id exists
+            char *task_name = get_task_name_by_id(newConfig.task_id);
+            if (task_name == NULL) {
+                ESP_LOGE("[new_config_message]", "Task not found");
                 char *msg_payload;
-                asprintf(&msg_payload, "\"status\": \"ok\", \"message\": \"Error parsing JSON\"");
+                asprintf(&msg_payload, "\"status\": \"ok\", \"message\": \"Task not found\"");
                 asprintf(&message, "{\"action\": \"write\", \"sender_client_id\": \"%s\", \"type\": \"config\", \"payload\": {%s}}", clientIdentifier, msg_payload);
+                publish(create_topic("config", "dashboard", false), message);
                 free(msg_payload);
                 return;
             }
-            
-            // get sensors array
-            cJSON *sensors = cJSON_GetObjectItem(payloadObj,"sensors");
-            // get length of sensors array
-            int sensors_len = cJSON_GetArraySize(sensors);
-            for (int i = 0; i < sensors_len; i++) {
-                Config_t newConfig;
-                cJSON *sensor_config = cJSON_GetArrayItem(sensors, i);
-                newConfig.task_id = cJSON_GetObjectItem(sensor_config,"task_id")->valueint;
-                ESP_LOGW("[new_config_message]", "Writing config for task id: %d", newConfig.task_id);
-                newConfig.active = cJSON_GetObjectItem(sensor_config,"active")->valueint;
+            update_task_config(newConfig.task_id, newConfig);
 
-                cJSON *pool = cJSON_GetObjectItem(sensor_config,"pool");
-                newConfig.polling_time = cJSON_GetObjectItem(pool,"actual_time")->valueint;
+            // send the ack
+            char *payload;
+            asprintf(&payload, "\"status\": \"ok\", \"message\": \"Configuration saved task id: %d, task name: %s\"", newConfig.task_id, task_name);
+            asprintf(&message, "{\"action\": \"write\", \"sender_client_id\": \"%s\", \"type\": \"config\", \"payload\": {%s}}", clientIdentifier, payload);
+            free(payload);
 
-                // check if task_id exists
-                char *task_name = get_task_name_by_id(newConfig.task_id);
-                if (task_name == NULL) {
-                    ESP_LOGE("[new_config_message]", "Task not found");
-                    char *msg_payload;
-                    asprintf(&msg_payload, "\"status\": \"ok\", \"message\": \"Task not found\"");
-                    asprintf(&message, "{\"action\": \"write\", \"sender_client_id\": \"%s\", \"type\": \"config\", \"payload\": {%s}}", clientIdentifier, msg_payload);
-                    free(msg_payload);
-                    return;
-                }
-                update_task_config(newConfig.task_id, newConfig);
-
-                // send the ack
-                char *payload;
-                asprintf(&payload, "\"status\": \"ok\", \"message\": \"Configuration saved task id: %d, task name: %s\"", newConfig.task_id, task_name);
-                asprintf(&message, "{\"action\": \"write\", \"sender_client_id\": \"%s\", \"type\": \"config\", \"payload\": {%s}}", clientIdentifier, payload);
-                free(payload);
-
-                if (message != NULL) {
-                    publish(create_topic("config", "dashboard", false), message);
-                }
-                free(message);
-                message = NULL;
+            if (message != NULL) {
+                publish(create_topic("config", "dashboard", false), message);
             }
-        } else {
-            ESP_LOGE("[new_config_message]", "Unknown action");
-            char *msg_payload;
-            asprintf(&msg_payload, "\"status\": \"ok\", \"message\": \"Unknown Action\"");
-            asprintf(&message, "{\"action\": \"write\", \"sender_client_id\": \"%s\", \"type\": \"config\", \"payload\": {%s}}", clientIdentifier, msg_payload);
-            free(msg_payload);
+            free(message);
+            message = NULL;
         }
     } else {
-        ESP_LOGE("[new_config_message]", "Unknown type");
+        ESP_LOGE("[new_config_message]", "Unknown action");
         char *msg_payload;
-        asprintf(&msg_payload, "\"status\": \"ok\", \"message\": \"Unknown Type\"");
+        asprintf(&msg_payload, "\"status\": \"ok\", \"message\": \"Unknown Action\"");
         asprintf(&message, "{\"action\": \"write\", \"sender_client_id\": \"%s\", \"type\": \"config\", \"payload\": {%s}}", clientIdentifier, msg_payload);
         free(msg_payload);
     }
@@ -196,7 +190,16 @@ void suscriber_particular_config_handler(char* topic, char* message) {
         ESP_LOGI("[suscriber_particular_config_handler]", "Payload: %s", payload_str);
     }
 
-    new_config_message(action, type, payload_str);
+    if (!strcmp(type, "config")) {
+        new_config_message(action, type, payload_str);
+    } else {
+        ESP_LOGE("[suscriber_particular_config_handler]", "Unknown type");
+        char *msg_payload;
+        asprintf(&msg_payload, "\"status\": \"ok\", \"message\": \"Unknown Type\"");
+        asprintf(&message, "{\"action\": \"%s\", \"sender_client_id\": \"%s\", \"type\": \"config\", \"payload\": {%s}}", action, clientIdentifier, msg_payload);
+        publish(create_topic("config", "dashboard", true), message);
+        free(msg_payload);
+    }
 }
 
 
@@ -229,6 +232,15 @@ void suscriber_global_config_handler(char* topic, char* message) {
     char *payload_str = cJSON_Print(payload);
     ESP_LOGI("[suscriber_particular_config_handler]", "Payload: %s", payload_str);
 
-    new_config_message(action, type, payload_str);
+    if (!strcmp(type, "config")) {
+        new_config_message(action, type, payload_str);
+    } else {
+        ESP_LOGE("[suscriber_global_config_handler]", "Unknown type");
+        char *msg_payload;
+        asprintf(&msg_payload, "\"status\": \"ok\", \"message\": \"Unknown Type\"");
+        asprintf(&message, "{\"action\": \"%s\", \"sender_client_id\": \"%s\", \"type\": \"config\", \"payload\": {%s}}", action, clientIdentifier, msg_payload);
+        publish(create_topic("config", "dashboard", false), message);
+        free(msg_payload);
+    }
 }
 

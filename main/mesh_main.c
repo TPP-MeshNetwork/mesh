@@ -67,6 +67,11 @@ static bool last_status_is_pressed = true;
 char * clientIdentifier = NULL;
 mqtt_queues_t *mqtt_queues = NULL;
 
+/*******************************************************
+ *                Network Manager Definitions
+ ******************************************************
+*/
+#define GPIO_NETWORK_MANAGER_CONFIGURED 2
 
 void static recv_cb(mesh_addr_t *from, mesh_data_t *data) {
     if (data->data[0] == CMD_ROUTE_TABLE)
@@ -305,10 +310,19 @@ void task_mqtt_client_start(void *args) {
     vTaskDelete(NULL);
 }
 
+void task_suscriber_event_executor(void *args) {
+    // this task only executes the event handler for the suscriber and then finishes the task
+    ESP_LOGI(MESH_TAG, "STARTED: task_suscriber_event_executor");
+    suscription_event_handler_t *event_handler = (suscription_event_handler_t *)args;
+    event_handler->handler(event_handler->topic, event_handler->message);
+    free(event_handler->message);
+    free(event_handler->topic);
+    free(event_handler);
+    vTaskDelete(NULL);
+}
+
 void task_suscribers_events(void *args) {
     ESP_LOGI(MESH_TAG, "STARTED: task_suscribers_events");
-    // mqtt_queues_t *mqtt_queues = (mqtt_queues_t *)args;
-
     char **topics_list = get_topics_list();
 
     while (1) {
@@ -323,7 +337,14 @@ void task_suscribers_events(void *args) {
                     ESP_LOGI(MESH_TAG, "Received message from topic: %s", topic);
                     ESP_LOGI(MESH_TAG, "Message: %s", message);
                     if (s->event_handler != NULL) {
-                        s->event_handler(topic, message);
+                        // create new suscription_event_handler_t
+                        suscription_event_handler_t *event_handler_data = (suscription_event_handler_t *) malloc(sizeof(suscription_event_handler_t));
+                        event_handler_data->topic = strdup(topic);
+                        // copy the message to the event handler data
+                        event_handler_data->message = strdup(message);
+                        event_handler_data->handler = s->event_handler;
+                        // create a new task to execute the event handler so that this receiver task doesnt block by the handler
+                        xTaskCreate(task_suscriber_event_executor, "task_suscriber_event_executor", 2048, (void *)event_handler_data, 5, NULL);
                     }
                     free(message);
                 }
@@ -355,6 +376,7 @@ esp_err_t esp_tasks_runner(void) {
     suscriber_add_topic(create_topic("config", "", false), suscriber_global_config_handler);
     suscriber_add_topic(create_topic("config", "", true), suscriber_particular_config_handler);
     /* Relay */
+    relay_init();
     suscriber_add_topic(create_topic("relay", "", true), relay_event_handler);
 
     if (!is_comm_mqtt_task_started) {
@@ -695,6 +717,16 @@ void app_start(void) {
     free(pwd);
 }
 
+void init_config_led() {
+    gpio_reset_pin(GPIO_NETWORK_MANAGER_CONFIGURED);
+    gpio_set_direction(GPIO_NETWORK_MANAGER_CONFIGURED, GPIO_MODE_OUTPUT);
+    gpio_set_level(GPIO_NETWORK_MANAGER_CONFIGURED, 0);
+}
+
+void set_config_led(bool status) {
+    gpio_set_level(GPIO_NETWORK_MANAGER_CONFIGURED, status);
+}
+
 void check_pin_status() {
     ESP_LOGI(MESH_TAG, "[check_pin_status] Intializing button check");
     while(1) {
@@ -712,6 +744,7 @@ void check_pin_status() {
                     if (now - last_time > 5) {
                         ESP_LOGI(MESH_TAG, "[check_pin_status] >>> Button release detected <<<");
                         ESP_LOGI(MESH_TAG, "[check_pin_status] Erasing persistence and restarting the device");
+                        set_config_led(false);
                         persistence_erase_namespace(NETWORK_MANAGER_PERSISTENCE_NAMESPACE);
                         esp_restart();
                     }
@@ -731,13 +764,13 @@ void check_pin_status() {
 esp_err_t config_button(void) {
     gpio_reset_pin(RST_BTN);
     gpio_set_direction(RST_BTN, GPIO_MODE_INPUT);
-
     return ESP_OK;
 }
 
 
 void app_main(void) {
     config_button();
+    init_config_led();
     ESP_LOGI(MESH_TAG, "%i", ESP_IDF_VERSION);
     vTaskDelay(2000 / portTICK_PERIOD_MS);
     ESP_LOGI(MESH_TAG, "[app_main] main inititalized");
@@ -754,7 +787,7 @@ void app_main(void) {
         persistence_err = persistence_get_u8(handler, "configured", &is_configured);
         if (is_configured == CONFIGURED_FLAG) {
             ESP_LOGI(MESH_TAG, "[app_main] The device has been configured");
-
+            set_config_led(true);
             xTaskCreate(check_pin_status, "button", 3072, NULL,5,NULL );
             // Starting the main application that starts the mesh network
             app_start();
