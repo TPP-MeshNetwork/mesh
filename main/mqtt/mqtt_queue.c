@@ -61,8 +61,7 @@ char * suscriber_get_message(const char *topic) {
         size_t available_messages = uxQueueMessagesWaiting(s->queue);
         if (s->queue != NULL && available_messages > 0) {
             if ( xQueueReceive(s->queue, &s_message, 10) == pdPASS ) {
-                ESP_LOG_BUFFER_HEXDUMP("SUSCRIBER", &s_message, sizeof(s_message) + 20, ESP_LOG_INFO);
-                ESP_LOGE("[suscriber_get_message]", "--->>>>> pointer message: %p", &s_message);
+                ESP_LOG_BUFFER_HEXDUMP("SUSCRIBER", &s_message, sizeof(s_message) + 5, ESP_LOG_INFO);
                 ESP_LOGI("[suscriber_get_message]", "Message: %s", s_message.message);
                 ESP_LOGI("[suscriber_get_message]", "Topic: %s", s_message.topic);
                 message = (char *) calloc((sizeof(char)) * MAX_MESSAGE_LENGTH, 1);
