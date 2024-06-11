@@ -1,21 +1,18 @@
 #include "esp_log.h"
 #include "nvs_flash.h"
 
-typedef int persistence_err_t;
 typedef uint32_t persistence_handler_t;
+typedef enum {
+    UNABLE_INITIALIZE_PERSISTENCE = 0,
+    INITIALIZED_PERSISTENCE = 1,
+    PERSISTENCE_OP_OK = 2,
+    PERSISTENCE_OP_FAIL = 3
+} persistence_err_t;
 
-#define PERSISTENCE_NAMESPACE "storage"
-
-#define UNABLE_INITIALIZE_PERSISTENCE 0
-#define INITIALIZED_PERSISTENCE 1
-#define PERSISTENCE_OP_OK 2
-#define PERSISTENCE_OP_FAIL 3
-
-void greet(void);
 persistence_err_t persistence_init(void);
 persistence_err_t persistence_erase_all(void);
-persistence_err_t persistence_erase_namespace(void);
-persistence_handler_t persistence_open(void);
+persistence_err_t persistence_erase_namespace(char *namespace);
+persistence_handler_t persistence_open(char *namespace);
 persistence_err_t persistence_close(persistence_handler_t handler);
 persistence_err_t persistence_get_str(persistence_handler_t handler, const char *key, char **value);
 persistence_err_t persistence_set_str(persistence_handler_t handler, const char *key, const char *value);

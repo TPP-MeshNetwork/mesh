@@ -1,21 +1,11 @@
-#include <ctype.h>
-#include <stdio.h>
-#include <string.h>
-#include <esp_log.h>
-#include <freertos/FreeRTOS.h>
-#include <freertos/task.h>
-#include <freertos/event_groups.h>
-#include <esp_wifi.h>
-#include <esp_event.h>
-#include <esp_netif.h>
-#include <esp_http_server.h>
-#include "cJSON.h"
-#include "mdns.h"
+
+#include "provisioning.h"
+#include "../persistence/persistence.h"
 
 
 #define MIN(a, b) ((a) < (b) ? (a) : (b))
 
-static const char *TAG = "app_wifi";
+extern char * MESH_TAG;
 
 const int WIFI_CONNECTED_EVENT = BIT0;
 static EventGroupHandle_t wifi_event_group;
@@ -24,8 +14,7 @@ typedef void (ConfigCallback)(char* ssid, uint8_t channel, char* password, char*
 extern const uint8_t provisioning_html_start[] asm("_binary_provisioning_html_start");
 extern const uint8_t provisioning_html_end[] asm("_binary_provisioning_html_end");
 
-typedef struct
-{
+typedef struct {
     uint16_t count;
     char **ssids;
     uint8_t* channels;
@@ -51,7 +40,7 @@ static void wifi_event_handler(void *arg, esp_event_base_t event_base, int32_t e
     }
     else if (event_id == WIFI_EVENT_STA_DISCONNECTED)
     {
-        ESP_LOGI(TAG, "Disconnected. Connecting to the AP again...");
+        ESP_LOGI(MESH_TAG, "Disconnected. Connecting to the AP again...");
         esp_wifi_connect();
     }
 }
@@ -61,7 +50,7 @@ static void ip_event_handler(void *arg, esp_event_base_t event_base, int32_t eve
     if (event_id == IP_EVENT_STA_GOT_IP)
     {
         ip_event_got_ip_t *event = (ip_event_got_ip_t *)event_data;
-        ESP_LOGI(TAG, "Connected with IP Address:" IPSTR, IP2STR(&event->ip_info.ip));
+        ESP_LOGI(MESH_TAG, "Connected with IP Address:" IPSTR, IP2STR(&event->ip_info.ip));
         /* Signal main application to continue execution */
         xEventGroupSetBits(wifi_event_group, WIFI_CONNECTED_EVENT);
     }
@@ -71,7 +60,7 @@ static void ip_event_handler(void *arg, esp_event_base_t event_base, int32_t eve
 static void event_handler(void *arg, esp_event_base_t event_base,
                           int32_t event_id, void *event_data)
 {
-    ESP_LOGI(TAG, "+++++++++++++++++++++EVENTO++++++++++++ %ld %s", event_id, event_base);
+    ESP_LOGI(MESH_TAG, "+++++++++++++++++++++ EVENT ++++++++++++ %ld %s", event_id, event_base);
     if (event_base == WIFI_EVENT)
     {
         wifi_event_handler(arg, event_base, event_id, event_data);
@@ -132,7 +121,7 @@ static wifi_scan_result_t scan_networks()
         result.ssids[i] = strdup((char *)ap_records[i].ssid);
         result.channels[i] = ap_records[i].primary;
 
-        ESP_LOGI("scan_wifi_networks", "ENCONTRE:....SSID: %s, Channel: %d", result.ssids[i], result.channels[i]);
+        ESP_LOGI("scan_wifi_networks", "Found SSID: %s, Channel: %d", result.ssids[i], result.channels[i]);
     }
     free(ap_records); // Free memory for AP records
 
@@ -173,12 +162,12 @@ static esp_err_t hello_get_handler(httpd_req_t *req)
 }
 
 
-char* url_decode(char* input){
-    ESP_LOGI(TAG, "URL DECODE: %s", input);
+char* url_decode(char* input) {
+    ESP_LOGI(MESH_TAG, "URL DECODE: %s", input);
     char* output = malloc(strlen(input) + 1);
     int i = 0, j = 0;
     if (output == NULL) {
-        ESP_LOGE(TAG, "Failed to allocate memory for URL Decoding");
+        ESP_LOGE(MESH_TAG, "Failed to allocate memory for URL Decoding");
         return NULL;
     }
     while (input[i]) {
@@ -201,33 +190,29 @@ char* url_decode(char* input){
         }
     }
     output[j] = '\0';
-    //ESP_LOGI(TAG, "URL DECODED: %s", output);
+    //ESP_LOGI(MESH_TAG, "URL DECODED: %s", output);
     return output;
 }
 
 
-static esp_err_t provision_post_handler(httpd_req_t *req)
-{
+static esp_err_t provision_post_handler(httpd_req_t *req) {
     char *buf = NULL;
     size_t buf_len = req->content_len;
     int ret;
     handler_args_t *args = (handler_args_t *)req->user_ctx;
 
     buf = malloc(buf_len + 1);
-    if (buf == NULL)
-    {
-        ESP_LOGE(TAG, "Failed to allocate memory for request body");
+    if (buf == NULL) {
+        ESP_LOGE(MESH_TAG, "Failed to allocate memory for request body");
         return ESP_FAIL;
     }
 
-    if ((ret = httpd_req_recv(req, buf, buf_len)) <= 0)
-    {
-        if (ret == HTTPD_SOCK_ERR_TIMEOUT)
-        {
+    if ((ret = httpd_req_recv(req, buf, buf_len)) <= 0) {
+        if (ret == HTTPD_SOCK_ERR_TIMEOUT) {
             return ESP_OK;
         }
         free(buf);
-        ESP_LOGE(TAG, "Failed to receive request body");
+        ESP_LOGE(MESH_TAG, "Failed to receive request body");
         return ESP_FAIL;
     }
 
@@ -241,9 +226,8 @@ static esp_err_t provision_post_handler(httpd_req_t *req)
     email = malloc(strlen(buf) + 1);
     wifi_channel = malloc(strlen(buf) + 1);
 
-    if (wifi_ssid == NULL || wifi_password == NULL || mesh_name == NULL || email == NULL || wifi_channel == NULL)
-    {
-        ESP_LOGE(TAG, "Failed to allocate memory for SSID and password");
+    if (wifi_ssid == NULL || wifi_password == NULL || mesh_name == NULL || email == NULL || wifi_channel == NULL) {
+        ESP_LOGE(MESH_TAG, "Failed to allocate memory for SSID and password");
         free(wifi_ssid);
         free(wifi_password);
         free(mesh_name);
@@ -256,9 +240,8 @@ static esp_err_t provision_post_handler(httpd_req_t *req)
         httpd_query_key_value(buf, "wifi_channel", wifi_channel, strlen(buf) + 1) == ESP_OK &&
         httpd_query_key_value(buf, "wifi_password", wifi_password, strlen(buf) + 1) == ESP_OK &&
         httpd_query_key_value(buf, "mesh_name", mesh_name, strlen(buf) + 1) == ESP_OK &&
-        httpd_query_key_value(buf, "email", email, strlen(buf) + 1) == ESP_OK)
-    {
-        ESP_LOGI(TAG, "Received Wi-Fi SSID: %s, Channel: %s, Password: %s, Mesh Name: %s, Email: %s", wifi_ssid, wifi_channel, wifi_password, mesh_name, email);
+        httpd_query_key_value(buf, "email", email, strlen(buf) + 1) == ESP_OK) {
+        ESP_LOGI(MESH_TAG, "Received Wi-Fi SSID: %s, Channel: %s, Password: %s, Mesh Name: %s, Email: %s", wifi_ssid, wifi_channel, wifi_password, mesh_name, email);
         
         const char *response = "Form submitted successfully!";
         httpd_resp_send(req, response, strlen(response));
@@ -276,14 +259,14 @@ static esp_err_t provision_post_handler(httpd_req_t *req)
         free(email);
         free(buf);
 
-        ESP_LOGI(TAG, "Channel value is :%s", wifi_channel);
-        ESP_LOGI(TAG, "Channel value is :%d", atoi(wifi_channel));
+        ESP_LOGI(MESH_TAG, "Channel value is :%s", wifi_channel);
+        ESP_LOGI(MESH_TAG, "Channel value is :%d", atoi(wifi_channel));
 
         if (args->callback != NULL) {
-            ESP_LOGI(TAG, "About to call callback");
+            ESP_LOGI(MESH_TAG, "About to call callback");
             args->callback(decoded_widi_ssid, (uint8_t) atoi(wifi_channel), decoded_wifi_password, decoded_mesh_name, decoded_email);
         } else {
-            ESP_LOGE(TAG, "Callback is NULL");
+            ESP_LOGE(MESH_TAG, "Callback is NULL");
         }
         
         free(wifi_channel);
@@ -306,30 +289,30 @@ static const httpd_uri_t hello = {
     .uri = "/",
     .method = HTTP_GET,
     .handler = hello_get_handler,
-    .user_ctx = NULL};
+    .user_ctx = NULL
+};
 
 static const httpd_uri_t scan = {
     .uri = "/scan",
     .method = HTTP_GET,
     .handler = scan_networks_handler,
-    .user_ctx = NULL};
+    .user_ctx = NULL
+};
 
 static httpd_uri_t provision = {
     .uri = "/provision",
     .method = HTTP_POST,
     .handler = provision_post_handler,
-    .user_ctx = NULL};
+    .user_ctx = NULL
+};
 
-esp_err_t http_404_error_handler(httpd_req_t *req, httpd_err_code_t err)
-{
-    if (strcmp("/hello", req->uri) == 0)
-    {
+esp_err_t http_404_error_handler(httpd_req_t *req, httpd_err_code_t err) {
+    if (strcmp("/hello", req->uri) == 0) {
         httpd_resp_send_err(req, HTTPD_404_NOT_FOUND, "/hello URI is not available");
         /* Return ESP_OK to keep underlying socket open */
         return ESP_OK;
     }
-    else if (strcmp("/echo", req->uri) == 0)
-    {
+    else if (strcmp("/echo", req->uri) == 0) {
         httpd_resp_send_err(req, HTTPD_404_NOT_FOUND, "/echo URI is not available");
         /* Return ESP_FAIL to close underlying socket */
         return ESP_FAIL;
@@ -344,11 +327,10 @@ handler_args_t extra_args = {
     };
 
 
-static httpd_handle_t start_webserver(void* callback)
-{
+static httpd_handle_t start_webserver(void* callback) {
     ESP_ERROR_CHECK( mdns_init() );
     ESP_ERROR_CHECK( mdns_hostname_set("milos") );
-    ESP_LOGI(TAG, "mdns hostname set to: [%s]", "milos");
+    ESP_LOGI(MESH_TAG, "mdns hostname set to: [%s]", "milos.local");
     ESP_ERROR_CHECK( mdns_instance_name_set("Milos network provisioning") );
     ESP_ERROR_CHECK(mdns_service_add(NULL, "_http", "_tcp", 80, NULL, 0));
 
@@ -360,50 +342,43 @@ static httpd_handle_t start_webserver(void* callback)
 
     provision.user_ctx = &extra_args;
 
-    ESP_LOGI(TAG, "Starting server on port: '%d'", config.server_port);
-    if (httpd_start(&server, &config) == ESP_OK)
-    {
-        ESP_LOGI(TAG, "Registering URI handlers");
+    ESP_LOGI(MESH_TAG, "Starting server on port: '%d'", config.server_port);
+    if (httpd_start(&server, &config) == ESP_OK) {
+        ESP_LOGI(MESH_TAG, "Registering URI handlers");
         httpd_register_uri_handler(server, &hello);
         httpd_register_uri_handler(server, &scan);
         httpd_register_uri_handler(server, &provision);
         return server;
     }
-    ESP_LOGI(TAG, "Error starting server!");
+    ESP_LOGI(MESH_TAG, "Error starting server!");
     return NULL;
 }
 
-static void stop_webserver(httpd_handle_t server)
-{
+static void stop_webserver(httpd_handle_t server) {
     httpd_stop(server);
 }
 
 static void disconnect_handler(void *arg, esp_event_base_t event_base,
-                               int32_t event_id, void *event_data)
-{
+                               int32_t event_id, void *event_data) {
     httpd_handle_t *server = (httpd_handle_t *)arg;
-    if (*server)
-    {
-        ESP_LOGI(TAG, "Stopping webserver");
+    if (*server) {
+        ESP_LOGI(MESH_TAG, "Stopping webserver");
         stop_webserver(*server);
         *server = NULL;
     }
 }
 
 static void connect_handler(void *arg, esp_event_base_t event_base,
-                            int32_t event_id, void *event_data)
-{
+                            int32_t event_id, void *event_data) {
     server_custom_arg_t *server_custom_arg = (server_custom_arg_t *)arg;
     httpd_handle_t *server = (httpd_handle_t *)server_custom_arg->server;
-    if (*server == NULL)
-    {
-        ESP_LOGI(TAG, "Starting webserver");
+    if (*server == NULL) {
+        ESP_LOGI(MESH_TAG, "Starting webserver");
         *server = start_webserver(server_custom_arg->callback);
     }
 }
 
-esp_err_t app_wifi_init(void)
-{
+esp_err_t app_wifi_init(void) {
     ESP_ERROR_CHECK(esp_netif_init());
     ESP_ERROR_CHECK(esp_event_loop_create_default());
     esp_netif_create_default_wifi_ap();
@@ -430,8 +405,7 @@ esp_err_t app_wifi_init(void)
     return ESP_OK;
 }
 
-esp_err_t app_wifi_start(ConfigCallback* callback)
-{
+esp_err_t app_wifi_start(ConfigCallback* callback) {
     static httpd_handle_t server = NULL;
     server_custom_arg_t server_custom_arg = {
         .server = NULL,
@@ -442,4 +416,18 @@ esp_err_t app_wifi_start(ConfigCallback* callback)
     server_custom_arg.server = start_webserver(callback);
 
     return ESP_OK;
+}
+
+void network_manager_callback(char *ssid, uint8_t channel, char *password, char *mesh_name, char *email) {
+    ESP_LOGI(MESH_TAG, "[network_manager_callback] called");
+    // TODO: hide password from logs 
+    ESP_LOGI(MESH_TAG, "[network_manager_callback] Received config Wi-Fi SSID: %s, Channel: %d, Password: ******, Mesh Name: %s, Email: %s", ssid, channel, mesh_name, email);
+    persistence_handler_t handler = persistence_open(NETWORK_MANAGER_PERSISTENCE_NAMESPACE);
+    persistence_set_str(handler, "ssid", ssid);
+    persistence_set_str(handler, "password", password);
+    persistence_set_u8(handler, "channel", channel);
+    persistence_set_u8(handler, "configured", CONFIGURED_FLAG);
+    persistence_set_str(handler, "MESH_TAG", mesh_name);
+    persistence_set_str(handler, "EMAIL", email);
+    esp_restart();
 }

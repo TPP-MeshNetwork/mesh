@@ -15,37 +15,37 @@
 #include "esp_log.h"
 #include "esp_mesh.h"
 #include "nvs_flash.h"
-#include "mesh_netif.h"
+#include "mesh_netif/mesh_netif.h"
 #include "driver/gpio.h"
 #include "freertos/semphr.h"
-#include <components/dht.h>
-#include "mqtt/aws_mqtt.h"
-#include "mqtt_queue.h"
+#include "mqtt/client/aws_mqtt.h"
 #include "network_transport.h"
 #include "esp_netif_sntp.h"
 #include <freertos/FreeRTOS.h>
-#include "esp_system.h"
 #include "network_manager/provisioning.h"
 #include "persistence/persistence.h"
+#include "suscription_handlers/suscription_event_handlers.h"
+#include "mqtt/utils/mqtt_utils.h"
+#include "performance/performance.h"
+#include "sensors/tasks/sensor_tasks.h"
+#include "sensors/utils/sensor_utils.h"
+#include "tasks_config/tasks_config.h"
+#include "relays/relays.h"
+#include "utils.h"
 
 /*******************************************************
  *                Macros
  *******************************************************/
 #define CMD_ROUTE_TABLE 0x56
 
-#define CONFIG_EXAMPLE_DATA_GPIO 33
-#define SENSOR_TYPE DHT_TYPE_DHT11
 /*******************************************************
  *                Constants
  *******************************************************/
 #define RST_BTN 13
-#define UNCONFIGURED_FLAG 0
-#define CONFIGURED_FLAG 1
-static char * MESH_TAG = "esp32-mesh";
+char * MESH_TAG = "esp32-mesh";
 static char * EMAIL = "";
 // MESH ID must be a 6-byte array to identify the mesh network and its created from the first 6 bytes of the MESH_TAG
 static uint8_t MESH_ID[6] = { 0x65, 0x73, 0x70, 0x33, 0x32, 0x2D};
-
 
 /*******************************************************
  *                Variable Definitions for Mesh
@@ -62,13 +62,17 @@ static uint8_t s_mesh_tx_payload[CONFIG_MESH_ROUTE_TABLE_SIZE * 6 + 1];
 static unsigned long int last_time = 0;
 static bool last_status_is_pressed = true;
 
+/*******************************************************
+ *       Variable Global Definitions for MQTT
+ *******************************************************/
+char * clientIdentifier = NULL;
+mqtt_queues_t *mqtt_queues = NULL;
 
-void publish(QueueHandle_t publishQueue, const char *topic, const char *message) {
-    mqtt_message_t mqtt_message;
-    strcpy(mqtt_message.topic, topic);
-    strcpy(mqtt_message.message, message);
-    xQueueSend(publishQueue, &mqtt_message, 0);
-}
+/*******************************************************
+ *                Network Manager Definitions
+ ******************************************************
+*/
+#define GPIO_NETWORK_MANAGER_CONFIGURED 2
 
 void static recv_cb(mesh_addr_t *from, mesh_data_t *data) {
     if (data->data[0] == CMD_ROUTE_TABLE)
@@ -81,7 +85,7 @@ void static recv_cb(mesh_addr_t *from, mesh_data_t *data) {
         xSemaphoreTake(s_route_table_lock, portMAX_DELAY);
         s_route_table_size = size / 6;
         for (int i = 0; i < s_route_table_size; ++i) {
-            ESP_LOGI(MESH_TAG, "Received Routing table [%d] " MACSTR, i, MAC2STR(data->data + 6 * i + 1));
+            ESP_LOGD(MESH_TAG, "Received Routing table [%d] " MACSTR, i, MAC2STR(data->data + 6 * i + 1));
         }
         memcpy(&s_route_table, data->data + 1, size);
         xSemaphoreGive(s_route_table_lock);
@@ -90,109 +94,6 @@ void static recv_cb(mesh_addr_t *from, mesh_data_t *data) {
     {
         ESP_LOGE(MESH_TAG, "Error in receiving raw mesh data: Unknown command");
     }
-}
-
-void log_perfdata() {
-    uint32_t free_heap_size = 0, min_free_heap_size = 0;
-    free_heap_size = esp_get_free_heap_size();
-    min_free_heap_size = esp_get_minimum_free_heap_size();
-    printf("\n\n free heap size = %ld \t  min_free_heap_size = %ld \n\n", free_heap_size, min_free_heap_size);
-}
-
-char * create_topic(char* topic_type, char* topic_suffix, bool withDeviceIndicator) {
-    if (topic_type == NULL || topic_suffix == NULL) {
-        ESP_LOGE(MESH_TAG, "Error in create_topic: topic_type or topic_suffix is NULL");
-        return NULL;
-    }
-    uint8_t macAp[6];
-    esp_wifi_get_mac(WIFI_IF_AP, macAp);
-    char *topic;
-    if (withDeviceIndicator) {
-        asprintf(&topic, "/mesh/%s/device/" MACSTR "/%s/%s", MESH_TAG, MAC2STR(macAp), topic_type, topic_suffix);
-    } else {
-        asprintf(&topic, "/mesh/%s/%s/%s", MESH_TAG, topic_type, topic_suffix);
-    }
-    return topic;
-}
-
-char *create_message(char *message) {
-    if (message == NULL)
-    {
-        ESP_LOGE(MESH_TAG, "Error in create_message message is NULL");
-        return NULL;
-    }
-
-    // get the timestamp for the message in epoch
-    time_t now;
-    time(&now);
-
-    uint8_t macAp[6];
-    esp_wifi_get_mac(WIFI_IF_AP, macAp);
-    char * new_message;
-    asprintf(&new_message, "{\"mesh_id\": \"%s\", \"device_id\": \"" MACSTR "\", \"timestamp_value\": %lld, %s }", MESH_TAG, MAC2STR(macAp), now, message);
-    return new_message;
-}
-
-
-void task_read_sensor_dh11(void *args) {
-    ESP_LOGI(MESH_TAG, "STARTED: task_read_sensor_dh11");
-    mqtt_queues_t *mqtt_queues = (mqtt_queues_t *)args;
-    char *sensor_message;
-    const int max_tries = 10;
-    int tries = 0;
-
-    const char *sensor_name[DHT11_SENSOR_COUNT] = {"temperature", "humidity"};
-
-    char * sensor_topic[DHT11_SENSOR_COUNT] = {
-        create_topic("sensor", "temperature", true),
-        create_topic("sensor", "humidity", true)
-    };
-
-    size_t sensor_length = sizeof(sensor_name) / sizeof(sensor_name[0]);
-
-    bool mocked = true;
-    float sensor_data[DHT11_SENSOR_COUNT] = {20.0f, 75.0f}; // initial values
-
-    while (1) {
-        if (mocked) {
-            
-            mockDh11SensorData(sensor_data, sensor_name);
-
-            ESP_LOGI(MESH_TAG, "%s: %.1fC\n", sensor_name[0], sensor_data[0]);
-        }
-        else if (dht_read_float_data(SENSOR_TYPE, CONFIG_EXAMPLE_DATA_GPIO, sensor_data + 1, sensor_data) == ESP_OK)
-        {
-            ESP_LOGI(MESH_TAG, "%s: %.1fC\n", sensor_name[0], sensor_data[0]);
-        }
-        else {
-            // stopping reading sensor if it fails too many times
-            tries++;
-            if (tries > max_tries)
-                break;
-            ESP_LOGI(MESH_TAG, "Could not read data from sensor\n");
-            vTaskDelay(pdMS_TO_TICKS(1000));
-            continue;
-        }
-
-        for (size_t i = 0; i < sensor_length; i++) {
-            asprintf(&sensor_message, " \"sensor_type\": \"%s\", \"sensor_value\": %.1f ", sensor_name[i], sensor_data[i]);
-            char *message = create_message(sensor_message);
-
-            ESP_LOGI(MESH_TAG, "Trying to queue message: %s", message);
-            if (mqtt_queues->mqttPublisherQueue != NULL)
-            {
-                publish(mqtt_queues->mqttPublisherQueue, sensor_topic[i], message);
-                ESP_LOGI(MESH_TAG, "queued done: %s", message);
-            }
-            free(message);
-            free(sensor_message);
-        }
-
-        vTaskDelay(pdMS_TO_TICKS(10000));
-    }
-    free(sensor_topic[0]);
-    free(sensor_topic[1]);
-    vTaskDelete(NULL);
 }
 
 void task_mesh_table_routing(void *args) {
@@ -212,7 +113,7 @@ void task_mesh_table_routing(void *args) {
             data.data = s_mesh_tx_payload;
             for (int i = 0; i < s_route_table_size; i++) {
                 err = esp_mesh_send(&s_route_table[i], &data, MESH_DATA_P2P, NULL, 0);
-                ESP_LOGI(MESH_TAG, "Sending routing table to [%d] " MACSTR ": sent with err code: %d", i, MAC2STR(s_route_table[i].addr), err);
+                ESP_LOGD(MESH_TAG, "Sending routing table to [%d] " MACSTR ": sent with err code: %d", i, MAC2STR(s_route_table[i].addr), err);
             }
         }
         vTaskDelay(2 * 1000 / portTICK_PERIOD_MS);
@@ -220,43 +121,39 @@ void task_mesh_table_routing(void *args) {
     vTaskDelete(NULL);
 }
 
-void concatenateSensorNames(const char *sensor_name[], int size, char result[]) {
-    for (int i = 0; i < size; i++) {
-        strcat(result, "\"");
-        strcat(result, sensor_name[i]);
-        strcat(result, "\", ");
-    }
-
-    // Remove the trailing comma and space
-    if (strlen(result) >= 2) {
-        result[strlen(result) - 2] = '\0';
-    }
-}
-
 void task_notify_new_device_id(void *args) {
     ESP_LOGI(MESH_TAG, "STARTED: task_notify_new_device_id");
     mqtt_queues_t *mqtt_queues = (mqtt_queues_t *) args;
-    char *device_id_msg;
 
     char * device_topic = create_topic("devices", "report", false);
-    const char *sensor_name[2] = {"temperature", "humidity"};
-    char result[100] = ""; // Initialize result string
+
+    uint8_t macAp[6];
+    esp_wifi_get_mac(WIFI_IF_AP, macAp);
+    
+    cJSON * device_id = cJSON_CreateObject();
+    cJSON_AddStringToObject(device_id, "mesh_id", MESH_TAG);
+    cJSON_AddStringToObject(device_id, "device_id", mac_to_hex_string(macAp));
+    cJSON * tasks_array = get_all_tasks_metrics_json();
+    cJSON_AddItemToObject(device_id, "tasks", tasks_array);
+
+    // if we have relays we add the relay state
+    cJSON * relays_array = get_relay_state();
+    cJSON_AddItemToObject(device_id, "relays", relays_array);
+
+
+    char * device_id_msg = cJSON_Print(device_id);
 
     while (1) {
-        uint8_t macAp[6];
-        esp_wifi_get_mac(WIFI_IF_AP, macAp);
-        concatenateSensorNames(sensor_name, sizeof(sensor_name) / sizeof(sensor_name[0]), result);
-        asprintf(&device_id_msg, "{\"mesh_id\": \"%s\", \"device_id\": \"" MACSTR "\", \"sensor_metrics\": [%s]}", MESH_TAG, MAC2STR(macAp), result);
-
         ESP_LOGI(MESH_TAG, "Trying to queue message: %s", device_id_msg);
         if (mqtt_queues->mqttPublisherQueue != NULL) {
-            publish(mqtt_queues->mqttPublisherQueue, device_topic, device_id_msg);
+            publish(device_topic, device_id_msg);
             ESP_LOGI(MESH_TAG, "queued done: %s - %s", device_topic, device_id_msg);
         }
         free(device_id_msg);
         vTaskDelay(24 * 3600 * 1000 / portTICK_PERIOD_MS);
     }
     free(device_topic);
+    free(device_id_msg);
     vTaskDelete(NULL);
 }
 
@@ -270,11 +167,11 @@ void task_notify_new_user_connected(void *args) {
         for (int i = 0; i < 5; i++) {
             uint8_t macAp[6];
             esp_wifi_get_mac(WIFI_IF_AP, macAp);
-            asprintf(&device_id_msg, "{\"mesh_id\": \"%s\", \"email\": \"%s\"}", MESH_TAG, EMAIL);
+            asprintf(&device_id_msg, "{\"mesh_id\": \"%s\", \"email\": \"%s\", \"account_role\": \"owner\", \"referer\":  \"%s\"}", MESH_TAG, EMAIL, EMAIL);
 
             ESP_LOGI(MESH_TAG, "Trying to queue message: %s", device_id_msg);
             if (mqtt_queues->mqttPublisherQueue != NULL) {
-                publish(mqtt_queues->mqttPublisherQueue, device_topic, device_id_msg);
+                publish(device_topic, device_id_msg);
                 ESP_LOGI(MESH_TAG, "queued done: %s - %s", device_topic, device_id_msg);
             }
             free(device_id_msg);
@@ -284,7 +181,6 @@ void task_notify_new_user_connected(void *args) {
     }
     vTaskDelete(NULL);
 }
-
 
 void task_mqtt_graph(void *args) {
     ESP_LOGI(MESH_TAG, "STARTED: task_mqtt_graph");
@@ -302,19 +198,18 @@ void task_mqtt_graph(void *args) {
 
     // mac addr AP of this node to string
     uint8_t macAp[6];
-    esp_wifi_get_mac(WIFI_IF_AP, macAp);
+    esp_wifi_get_mac(WIFI_IF_AP, macAp);    
 
     char * topic = create_topic("graph", "report", false);
 
     while (is_running) {
-        log_perfdata(); // for debugging memory leaks
+        log_memory(); // for debugging memory leaks
 
         if (esp_mesh_is_root()) {
             // the root node has no parent so instead we get the WIFI_IF_AP -> WIFI_IF_STA
             asprintf(&graph_message, "\"layer\": %d, \"root\": true, \"macSta\": \"" MACSTR "\", \"macSoftap\": \"" MACSTR "\"", esp_mesh_get_layer(), MAC2STR(macSta), MAC2STR(macAp));
         }
-        else
-        {
+        else {
             asprintf(&graph_message, "\"layer\": %d, \"root\": false, \"macSta\": \"" MACSTR "\", \"macSoftap\": \"" MACSTR "\"", esp_mesh_get_layer(), MAC2STR(parent.addr), MAC2STR(macAp));
         }
 
@@ -323,12 +218,12 @@ void task_mqtt_graph(void *args) {
         ESP_LOGI(MESH_TAG, "Trying to queue message: %s", message);
         if (mqtt_queues->mqttPublisherQueue != NULL)
         {
-            publish(mqtt_queues->mqttPublisherQueue, topic, message);
+            publish(topic, message);
             ESP_LOGI(MESH_TAG, "queued done: %s", message);
         }
         free(graph_message);
         free(message);
-        vTaskDelay(pdMS_TO_TICKS(2000));
+        vTaskDelay(pdMS_TO_TICKS(3000));
     }
     free(topic);
     vTaskDelete(NULL);
@@ -345,15 +240,18 @@ void task_mqtt_client_start(void *args) {
 
     uint8_t macSta[6];
     esp_wifi_get_mac(WIFI_IF_STA, macSta);
-    char * clientIdentifier = malloc(18 * sizeof(char));
+    clientIdentifier = (char *) malloc(18 * sizeof(char));
     sprintf(clientIdentifier, MACSTR, MAC2STR(macSta));
 
+    // get list of topics to subscribe to
+    char **topics_list = get_topics_list();
 
-    int mqtt_connection_status = start_mqtt_connection(&mqttContext, &xNetworkContext, clientIdentifier);
+
+    int mqtt_connection_status = start_mqtt_connection(&mqttContext, &xNetworkContext, clientIdentifier, topics_list);
     while (1) {
         if (mqtt_connection_status == EXIT_FAILURE) {
             ( void ) xTlsDisconnect( &xNetworkContext );
-            mqtt_connection_status = start_mqtt_connection(&mqttContext, &xNetworkContext, clientIdentifier);
+            mqtt_connection_status = start_mqtt_connection(&mqttContext, &xNetworkContext, clientIdentifier, topics_list);
             if (mqtt_connection_status == EXIT_SUCCESS) {
                 ESP_LOGE(MESH_TAG, "--- Reconnected to the server");
             }
@@ -384,37 +282,110 @@ void task_mqtt_client_start(void *args) {
                 }
             }
         }
+        /* Calling MQTT_ProcessLoop to process incoming publish. This function also
+         * sends ping request to broker if 1 second has expired since the last MQTT packet sent and receive ping responses.
+         */
+        MQTTStatus_t mqttStatus = processLoopWithTimeout( &mqttContext, 1000 );
+
+        /* For any error in #MQTT_ProcessLoop, exit the loop and disconnect
+            * from the broker. */
+        if( ( mqttStatus != MQTTSuccess ) && ( mqttStatus != MQTTNeedMoreBytes ) )
+        {
+            LogError( ( "MQTT_ProcessLoop returned with status = %s.",
+                        MQTT_Status_strerror( mqttStatus ) ) );
+            
+            mqtt_connection_status = EXIT_FAILURE;
+        }
         free(buffer);
-        vTaskDelay(2000 / portTICK_PERIOD_MS);
+        vTaskDelay(200 / portTICK_PERIOD_MS);
     }
     vTaskDelete(NULL);
 }
+
+void task_suscriber_event_executor(void *args) {
+    // this task only executes the event handler for the suscriber and then finishes the task
+    ESP_LOGI(MESH_TAG, "STARTED: task_suscriber_event_executor");
+    suscription_event_handler_t *event_handler = (suscription_event_handler_t *)args;
+    event_handler->handler(event_handler->topic, event_handler->message);
+    free(event_handler->message);
+    free(event_handler->topic);
+    free(event_handler);
+    vTaskDelete(NULL);
+}
+
+void task_suscribers_events(void *args) {
+    ESP_LOGI(MESH_TAG, "STARTED: task_suscribers_events");
+    char **topics_list = get_topics_list();
+
+    while (1) {
+        // looping though each topic queue and check if we have an incoming message
+        for(size_t i = 0; topics_list[i] != NULL; i++) {
+            char * topic = topics_list[i];
+            // suscriber_get_message handles also the correct event handler
+            char * message = suscriber_get_message(topic);
+            SuscriptionTopicsHash_t *s = suscriber_find_topic(topic);
+            if (s != NULL) {
+                if (message != NULL) {
+                    ESP_LOGI(MESH_TAG, "Received message from topic: %s", topic);
+                    ESP_LOGI(MESH_TAG, "Message: %s", message);
+                    if (s->event_handler != NULL) {
+                        // create new suscription_event_handler_t
+                        suscription_event_handler_t *event_handler_data = (suscription_event_handler_t *) malloc(sizeof(suscription_event_handler_t));
+                        event_handler_data->topic = strdup(topic);
+                        // copy the message to the event handler data
+                        event_handler_data->message = strdup(message);
+                        event_handler_data->handler = s->event_handler;
+                        // create a new task to execute the event handler so that this receiver task doesnt block by the handler
+                        xTaskCreate(task_suscriber_event_executor, "task_suscriber_event_executor", 3072, (void *)event_handler_data, 5, NULL);
+                    }
+                    free(message);
+                }
+            }
+        }
+        vTaskDelay(100 / portTICK_PERIOD_MS);   
+    }
+    vTaskDelete(NULL);
+}
+
 
 esp_err_t esp_tasks_runner(void) {
     static bool is_comm_mqtt_task_started = false;
 
     s_route_table_lock = xSemaphoreCreateMutex();
 
-    mqtt_queues_t *mqtt_queues = (mqtt_queues_t *)malloc(sizeof(mqtt_queues_t));
-
+    mqtt_queues = (mqtt_queues_t *) malloc(sizeof(mqtt_queues_t));
     mqtt_queues->mqttPublisherQueue = xQueueCreate(queueSize, sizeof(mqtt_message_t));
-    mqtt_queues->mqttSuscriberQueue = xQueueCreate(queueSize, sizeof(mqtt_message_t));
+    init_suscriber_hash();
+    mqtt_queues->mqttSuscriberHash = suscription_topics;
 
     if (mqtt_queues->mqttPublisherQueue == NULL)
     {
         ESP_LOGI(MESH_TAG, "Error creating the mqttPublisherQueue");
     }
-    if (mqtt_queues->mqttSuscriberQueue == NULL)
-    {
-        ESP_LOGI(MESH_TAG, "Error creating the mqttSuscriberQueue");
-    }
 
-    if (!is_comm_mqtt_task_started)
-    {
-        xTaskCreate(task_mesh_table_routing, "mqtt routing-table", 3072, NULL, 5, NULL);
-        vTaskDelay(10000 / portTICK_PERIOD_MS);
-        xTaskCreate(task_mqtt_client_start, "mqtt task-aws", 7168, (void *)mqtt_queues, 5, NULL);
-        xTaskCreate(task_read_sensor_dh11, "Read data from sensor", 3072, (void *)mqtt_queues, 5, NULL);
+    /* Adding topics that we want to subscribe to */
+    /* Config */
+    suscriber_add_topic(create_topic("config", "", false), suscriber_global_config_handler);
+    suscriber_add_topic(create_topic("config", "", true), suscriber_particular_config_handler);
+    /* Relay */
+    relay_init();
+    suscriber_add_topic(create_topic("relay", "", true), relay_event_handler);
+
+    if (!is_comm_mqtt_task_started) {
+        xTaskCreate(task_mesh_table_routing, "mqtt routing-table", 2048, NULL, 5, NULL);
+        vTaskDelay(5000 / portTICK_PERIOD_MS);
+        xTaskCreate(task_mqtt_client_start, "mqtt task-aws", 8096, (void *)mqtt_queues, 5, NULL);
+        xTaskCreate(task_suscribers_events, "Task that reads suscription events", 8096, NULL, 5, NULL);
+        
+        vTaskDelay(2000 / portTICK_PERIOD_MS);
+        char * sensor_metrics[] = {"temperature", "humidity", NULL};
+
+        create_sensor_task("task_sensor_dht11", "dht11", sensor_metrics ,task_sensor_dht11, (void *) mqtt_queues, (Config_t) {
+            .max_polling_time = 0,  // 0 means no max time restriction
+            .min_polling_time = 1000, // 1 second
+            .polling_time = 10000, // 10 seconds
+            .active = 1 // active
+        });
         xTaskCreate(task_mqtt_graph, "Graph logging task", 3072, (void *)mqtt_queues, 5, NULL);
         xTaskCreate(task_notify_new_device_id, "Notify new device in mesh", 3072, (void *)mqtt_queues, 5, NULL);
         xTaskCreate(task_notify_new_user_connected, "Notify new user mail connected", 3072, (void *)mqtt_queues, 5, NULL);
@@ -423,6 +394,7 @@ esp_err_t esp_tasks_runner(void) {
     return ESP_OK;
 }
 
+
 void mesh_event_handler(void *arg, esp_event_base_t event_base,
                         int32_t event_id, void *event_data) {
     mesh_addr_t id = {
@@ -430,8 +402,7 @@ void mesh_event_handler(void *arg, esp_event_base_t event_base,
     };
     static uint8_t last_layer = 0;
 
-    switch (event_id)
-    {
+    switch (event_id) {
     case MESH_EVENT_STARTED:
     {
         esp_mesh_get_id(&id);
@@ -654,14 +625,14 @@ void ip_event_handler(void *arg, esp_event_base_t event_base,
     esp_netif_sntp_init(&config);
     if (esp_netif_sntp_sync_wait(pdMS_TO_TICKS(10000)) != ESP_OK)
     {
-        printf("Failed to update system time within 10s timeout");
+        ESP_LOGE("[task_suscribers_events]", " Failed to update system time within 10s timeout");
         esp_restart();
     }
     esp_tasks_runner();
 }
 
 void app_start(void) {
-    persistence_handler_t handler = persistence_open();
+    persistence_handler_t handler = persistence_open(NETWORK_MANAGER_PERSISTENCE_NAMESPACE);
     char* ssid = NULL;
     char* pwd = NULL;
     uint8_t channel = 0;
@@ -672,9 +643,9 @@ void app_start(void) {
     persistence_get_str(handler, "EMAIL", &EMAIL);
 
     if (ssid == NULL || pwd == NULL || EMAIL == NULL) {
-        ESP_LOGE("esp32", "Error: Network manager not configured");
+        ESP_LOGE("esp32", "[app_start] Error: Network manager not configured");
         vTaskDelay(10000 / portTICK_PERIOD_MS);
-        persistence_erase_namespace();
+        persistence_erase_namespace(NETWORK_MANAGER_PERSISTENCE_NAMESPACE);
         esp_restart();
     }
 
@@ -738,8 +709,18 @@ void app_start(void) {
     free(pwd);
 }
 
+void init_config_led() {
+    gpio_reset_pin(GPIO_NETWORK_MANAGER_CONFIGURED);
+    gpio_set_direction(GPIO_NETWORK_MANAGER_CONFIGURED, GPIO_MODE_OUTPUT);
+    gpio_set_level(GPIO_NETWORK_MANAGER_CONFIGURED, 0);
+}
+
+void set_config_led(bool status) {
+    gpio_set_level(GPIO_NETWORK_MANAGER_CONFIGURED, status);
+}
+
 void check_pin_status() {
-    ESP_LOGI(MESH_TAG, "Iniciando el check_pin_status");
+    ESP_LOGI(MESH_TAG, "[check_pin_status] Intializing button check");
     while(1) {
         bool pressed = !(bool) gpio_get_level(RST_BTN);
         unsigned long int now = xTaskGetTickCount() / configTICK_RATE_HZ;
@@ -753,14 +734,15 @@ void check_pin_status() {
                 if (!pressed) {
                     // Soltamos el boton
                     if (now - last_time > 5) {
-                        ESP_LOGI(MESH_TAG, ">>> DETECTO SOLTADO DEL BOTON <<<");
-                        ESP_LOGI(MESH_TAG, ">>> BORRANDO NVS y REINICIANDO <<<");
-                        persistence_erase_namespace();
+                        ESP_LOGI(MESH_TAG, "[check_pin_status] >>> Button release detected <<<");
+                        ESP_LOGI(MESH_TAG, "[check_pin_status] Erasing persistence and restarting the device");
+                        set_config_led(false);
+                        persistence_erase_namespace(NETWORK_MANAGER_PERSISTENCE_NAMESPACE);
                         esp_restart();
                     }
                 } else {
                     // Presionamos el boton
-                    ESP_LOGI(MESH_TAG, ">>> DETECTO PRESIONADO DEL BOTON <<<");
+                    ESP_LOGI(MESH_TAG, "[check_pin_status] >>> Button press detected <<<");
                 }
                 last_time = now;
                 last_status_is_pressed = pressed;
@@ -774,54 +756,40 @@ void check_pin_status() {
 esp_err_t config_button(void) {
     gpio_reset_pin(RST_BTN);
     gpio_set_direction(RST_BTN, GPIO_MODE_INPUT);
-
     return ESP_OK;
 }
 
-void network_manager_callback(char *ssid, uint8_t channel, char *password, char *mesh_name, char *email) {
-    ESP_LOGI(MESH_TAG, "Llamé al callback");
-    // TODO: hide password from logs 
-    ESP_LOGI(MESH_TAG, "Received config Wi-Fi SSID: %s, Channel: %d, Password: %s, Mesh Name: %s, Email: %s", ssid, channel, password, mesh_name, email);
-    persistence_handler_t handler = persistence_open();
-    persistence_set_str(handler, "ssid", ssid);
-    persistence_set_str(handler, "password", password);
-    persistence_set_u8(handler, "channel", channel);
-    persistence_set_u8(handler, "configured", CONFIGURED_FLAG);
-    persistence_set_str(handler, "MESH_TAG", mesh_name);
-    persistence_set_str(handler, "EMAIL", email);
-
-    esp_restart();
-}
 
 void app_main(void) {
     config_button();
+    init_config_led();
     ESP_LOGI(MESH_TAG, "%i", ESP_IDF_VERSION);
     vTaskDelay(2000 / portTICK_PERIOD_MS);
-    ESP_LOGI(MESH_TAG, "Iniciando el main");
+    ESP_LOGI(MESH_TAG, "[app_main] main inititalized");
     
     // Load persistence to check if device has already been configured or not
     persistence_err_t persistence_err = persistence_init();
     if (persistence_err == UNABLE_INITIALIZE_PERSISTENCE) {
-        ESP_LOGE(MESH_TAG, "Error al inicializar la persistencia");
+        ESP_LOGE(MESH_TAG, "[app_main] Error initializing the persistence");
     } else {
-        ESP_LOGI(MESH_TAG, "Inicializado la persistencia");
+        ESP_LOGI(MESH_TAG, "[app_main] Persistence initialized successfully");
         //TODO: Check for possible errors and act accordingly
-        persistence_handler_t handler = persistence_open();
+        persistence_handler_t handler = persistence_open(NETWORK_MANAGER_PERSISTENCE_NAMESPACE);
         uint8_t is_configured;
         persistence_err = persistence_get_u8(handler, "configured", &is_configured);
         if (is_configured == CONFIGURED_FLAG) {
-            ESP_LOGI(MESH_TAG, "El dispositivo ya ha sido configurado");
-
+            ESP_LOGI(MESH_TAG, "[app_main] The device has been configured");
+            set_config_led(true);
             xTaskCreate(check_pin_status, "button", 3072, NULL,5,NULL );
             // Starting the main application that starts the mesh network
             app_start();
         } else {
-            ESP_LOGI(MESH_TAG, "El dispositivo no ha sido configurado");
-            ESP_LOGI(MESH_TAG, "Iniciando el webserver");
+            ESP_LOGI(MESH_TAG, "[app_main] The device has not been configured yet");
+            ESP_LOGI(MESH_TAG, "[app_main] Initializing the webserver");
             app_wifi_init();
 
             app_wifi_start(&network_manager_callback);
-            ESP_LOGI(MESH_TAG, "Finalizado el webserver");
+            ESP_LOGI(MESH_TAG, "[app_main] webserver initialized");
         }
         persistence_close(handler);
     }

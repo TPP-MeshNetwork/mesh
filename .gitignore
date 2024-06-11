@@ -23,6 +23,8 @@ main/certs/client.crt
 main/certs/client.key
 main/certificates
 
+managed_components/*/.component_hash
+
 # VSCode
 .vscode/*
 sdkconfig.defaults
