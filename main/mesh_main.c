@@ -30,6 +30,7 @@
 #include "sensors/tasks/sensor_tasks.h"
 #include "sensors/utils/sensor_utils.h"
 #include "tasks_config/tasks_config.h"
+#include "relays/relays.h"
 #include "utils.h"
 
 /*******************************************************
@@ -120,19 +121,6 @@ void task_mesh_table_routing(void *args) {
     vTaskDelete(NULL);
 }
 
-void concatenateMetricNames(const char *sensor_name[], int size, char result[]) {
-    for (int i = 0; i < size; i++) {
-        strcat(result, "\"");
-        strcat(result, sensor_name[i]);
-        strcat(result, "\", ");
-    }
-
-    // Remove the trailing comma and space
-    if (strlen(result) >= 2) {
-        result[strlen(result) - 2] = '\0';
-    }
-}
-
 void task_notify_new_device_id(void *args) {
     ESP_LOGI(MESH_TAG, "STARTED: task_notify_new_device_id");
     mqtt_queues_t *mqtt_queues = (mqtt_queues_t *) args;
@@ -147,6 +135,10 @@ void task_notify_new_device_id(void *args) {
     cJSON_AddStringToObject(device_id, "device_id", mac_to_hex_string(macAp));
     cJSON * tasks_array = get_all_tasks_metrics_json();
     cJSON_AddItemToObject(device_id, "tasks", tasks_array);
+
+    // if we have relays we add the relay state
+    cJSON * relays_array = get_relay_state();
+    cJSON_AddItemToObject(device_id, "relays", relays_array);
 
 
     char * device_id_msg = cJSON_Print(device_id);
@@ -231,7 +223,7 @@ void task_mqtt_graph(void *args) {
         }
         free(graph_message);
         free(message);
-        vTaskDelay(pdMS_TO_TICKS(2000));
+        vTaskDelay(pdMS_TO_TICKS(3000));
     }
     free(topic);
     vTaskDelete(NULL);
@@ -305,7 +297,7 @@ void task_mqtt_client_start(void *args) {
             mqtt_connection_status = EXIT_FAILURE;
         }
         free(buffer);
-        vTaskDelay(500 / portTICK_PERIOD_MS);
+        vTaskDelay(200 / portTICK_PERIOD_MS);
     }
     vTaskDelete(NULL);
 }
@@ -344,7 +336,7 @@ void task_suscribers_events(void *args) {
                         event_handler_data->message = strdup(message);
                         event_handler_data->handler = s->event_handler;
                         // create a new task to execute the event handler so that this receiver task doesnt block by the handler
-                        xTaskCreate(task_suscriber_event_executor, "task_suscriber_event_executor", 2048, (void *)event_handler_data, 5, NULL);
+                        xTaskCreate(task_suscriber_event_executor, "task_suscriber_event_executor", 3072, (void *)event_handler_data, 5, NULL);
                     }
                     free(message);
                 }

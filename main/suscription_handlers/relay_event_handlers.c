@@ -3,46 +3,8 @@
 *   Topic: /mesh/[mesh_id]/devices/[device_id]/relay
 *   Publishes on the topic: /mesh/[mesh_id]/devices/[device_id]/relay/dashboard
 */
-#include "suscription_event_handlers.h"
-#include "driver/gpio.h"
+#include "../relays/relays.h"
 
-// PIN GPIO22
-#define RELAY1_PIN GPIO_NUM_22
-// PIN GPIO23
-#define RELAY2_PIN GPIO_NUM_23
-
-extern char *clientIdentifier;
-extern mqtt_queues_t mqtt_queues;
-
-/* 
-  * Function: relay_init
-  * ----------------------------
-  *   Initialize the relay pins
-  *
-*/
-void relay_init() {
-
-    // Configure GPIO pin as output
-    gpio_set_direction(RELAY1_PIN, GPIO_MODE_OUTPUT);
-
-    // Set initial level to turn off the LED
-    gpio_set_level(RELAY1_PIN, 0);
-
-    // Disable pull-up/pull-down resistors
-    gpio_set_pull_mode(RELAY1_PIN, GPIO_PULLUP_DISABLE);
-    gpio_set_pull_mode(RELAY1_PIN, GPIO_PULLDOWN_DISABLE);
-
-    // Configure GPIO pin as output
-    gpio_set_direction(RELAY2_PIN, GPIO_MODE_OUTPUT);
-
-    // Set initial level to turn off the LED
-    gpio_set_level(RELAY2_PIN, 0);
-
-    // Disable pull-up/pull-down resistors
-    gpio_set_pull_mode(RELAY2_PIN, GPIO_PULLUP_DISABLE);
-    gpio_set_pull_mode(RELAY2_PIN, GPIO_PULLDOWN_DISABLE);
-
-}
 
 /*
   * Function: relay_event_handler
@@ -89,19 +51,9 @@ void relay_event_handler(char* topic, char* message) {
             cJSON_AddStringToObject(payloadObj, "sender_client_id", clientIdentifier);
             cJSON_AddStringToObject(payloadObj, "type", "relay");
 
-            // create array of relay states
-            cJSON *relays = cJSON_CreateArray();
-            cJSON *relay1 = cJSON_CreateObject();
-            cJSON_AddNumberToObject(relay1, "relay_id", 1);
-            cJSON_AddNumberToObject(relay1, "state", gpio_get_level(RELAY1_PIN));
-            cJSON_AddItemToArray(relays, relay1);
+            cJSON *relays_array = get_relay_state();
 
-            cJSON *relay2 = cJSON_CreateObject();
-            cJSON_AddNumberToObject(relay2, "relay_id", 2);
-            cJSON_AddNumberToObject(relay2, "state", gpio_get_level(RELAY2_PIN));
-            cJSON_AddItemToArray(relays, relay2);
-
-            cJSON_AddItemToObject(payloadObj, "payload", relays);            
+            cJSON_AddItemToObject(payloadObj, "payload", relays_array);            
 
             char *payload_str = cJSON_Print(payloadObj);
             cJSON_Delete(payloadObj);
