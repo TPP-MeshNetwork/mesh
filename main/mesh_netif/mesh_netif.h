@@ -6,7 +6,16 @@
    software is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
    CONDITIONS OF ANY KIND, either express or implied.
 */
-#pragma once
+
+#include "esp_wifi.h"
+#include "esp_netif.h"
+#include "esp_log.h"
+#include <string.h>
+#include "esp_mesh.h"
+#include "esp_mac.h"
+#include "lwip/lwip_napt.h"
+#include "dhcpserver/dhcpserver.h"
+#include "esp_wifi_netif.h"
 
 /*******************************************************
  *                Macros
@@ -75,3 +84,11 @@ esp_err_t mesh_netif_start_root_ap(bool is_root, uint32_t dns_addr);
  * @return Pointer to MAC address
  */
 uint8_t* mesh_netif_get_station_mac(void);
+
+
+/**
+ * @brief Returns MAC address of the AP interface
+ * 
+ * @return String (char*) to MAC address
+*/
+char * get_mac_ap(void);

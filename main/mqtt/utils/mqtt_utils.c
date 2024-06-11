@@ -52,3 +52,7 @@ char * create_topic(char* topic_type, char* topic_suffix, bool withDeviceIndicat
     }
     return topic;
 }
+
+char * create_client_identifier() {
+    return get_mac_ap();
+}

@@ -20,8 +20,6 @@ idf_component_register(SRCS # Main files Mesh
                             "tasks_config/tasks_config.c"
                             # Relay files
                             "relays/relays.c"
-                            # Utils files
-                            "utils/utils.c"
                      INCLUDE_DIRS "." 
                                  "mesh_netif"
                                  "mqtt"

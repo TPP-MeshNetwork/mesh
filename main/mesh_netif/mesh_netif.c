@@ -6,15 +6,6 @@
    software is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
    CONDITIONS OF ANY KIND, either express or implied.
 */
-#include "esp_wifi.h"
-#include "esp_netif.h"
-#include "esp_log.h"
-#include <string.h>
-#include "esp_mesh.h"
-#include "esp_mac.h"
-#include "lwip/lwip_napt.h"
-#include "dhcpserver/dhcpserver.h"
-#include "esp_wifi_netif.h"
 #include "mesh_netif.h"
 
 /*******************************************************
@@ -471,4 +462,12 @@ esp_err_t mesh_netifs_stop(void) {
 uint8_t* mesh_netif_get_station_mac(void) {
     mesh_netif_driver_t mesh =  esp_netif_get_io_driver(netif_sta);
     return mesh->sta_mac_addr;
+}
+
+char * get_mac_ap() {
+    uint8_t macAp[6];
+    esp_wifi_get_mac(WIFI_IF_AP, macAp);
+    char * mac_ap = (char *) malloc(18 * sizeof(char));
+    sprintf(mac_ap, MACSTR, MAC2STR(macAp));
+    return mac_ap;
 }

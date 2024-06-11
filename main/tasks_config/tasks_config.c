@@ -237,17 +237,17 @@ int get_task_id_by_name(char * task_name) {
   *   Add a task mapping
   *
 */
-int add_task_mapping(char * task_name, char * sensor_metrics[]) {
+int add_task_mapping(char * task_name, char *sensor_name, char * sensor_metrics[]) {
     // check if the task_name already exists
     if (get_task_id_by_name(task_name) != -1) {
         return -1;
     }
 
-    TasksMapping_t *ret_task_mapping = (TasksMapping_t *)malloc(sizeof(TasksMapping_t));
+    TasksMapping_t *ret_task_mapping = (TasksMapping_t *) malloc(sizeof(TasksMapping_t));
     ret_task_mapping->id = HASH_COUNT(tasks_mapping) + 1;
     strcpy(ret_task_mapping->task_name, task_name);
 
-    // creating a copy in the heap of the sensor_metrics
+    // Creating a copy in the heap of the sensor_metrics
     int i = 0;
     while (sensor_metrics[i] != NULL) i++; // count how many items are in the array
     char ** sensor_metrics_copy = (char **)malloc(sizeof(char *) * i + 1); // +1 for the NULL
@@ -257,6 +257,11 @@ int add_task_mapping(char * task_name, char * sensor_metrics[]) {
         sensor_metrics_copy[j][strlen(sensor_metrics[j])] = '\0';
     }
     sensor_metrics_copy[i] = NULL; // adding the NULL at the end of the array
+
+    // Adding sensor name
+    ret_task_mapping->sensor_name = (char *) malloc(sizeof(char) * strlen(sensor_name) + 1);
+    strcpy(ret_task_mapping->sensor_name, sensor_name);
+    ret_task_mapping->sensor_name[strlen(sensor_name)] = '\0';
 
     ret_task_mapping->sensor_types = sensor_metrics_copy;
     ESP_LOGI("[add_task_mapping]", "Adding task mapping: %s, id: %d", task_name, ret_task_mapping->id);
@@ -341,6 +346,9 @@ cJSON * get_all_tasks_metrics_json() {
 
         // Adding task name
         cJSON_AddItemToObject(task_object, "name", cJSON_CreateString(task_mapping->task_name));
+
+        // Adding sensor name
+        cJSON_AddItemToObject(task_object, "sensor", cJSON_CreateString(task_mapping->sensor_name));
 
         // Creating an array for sensor metrics
         cJSON * sensor_metrics_array = cJSON_CreateArray();

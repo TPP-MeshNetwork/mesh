@@ -30,6 +30,7 @@ typedef struct {
 typedef struct {
     char task_name[TASKS_NAME_SIZE]; /* key */
     int id;
+    char * sensor_name;
     char ** sensor_types;
     UT_hash_handle hh;
 } TasksMapping_t;
@@ -46,7 +47,7 @@ esp_err_t load_task_config(int task_id);
 // tasks mapping functions
 int get_task_id_by_name(char * task_name);
 char * get_task_name_by_id(int id);
-int add_task_mapping(char * task_name, char * sensor_metrics[]);
+int add_task_mapping(char * task_name, char * sensor_name, char * sensor_metrics[]);
 char ** get_sensor_metrics_by_task_id(int id);
 int ** get_all_tasks_ids();
 
