@@ -31,7 +31,6 @@
 #include "sensors/utils/sensor_utils.h"
 #include "tasks_config/tasks_config.h"
 #include "relays/relays.h"
-#include "utils.h"
 
 /*******************************************************
  *                Macros
@@ -41,15 +40,15 @@
 /*******************************************************
  *                Constants
  *******************************************************/
-#define RST_BTN 13
 char * MESH_TAG = "esp32-mesh";
-static char * EMAIL = "";
-// MESH ID must be a 6-byte array to identify the mesh network and its created from the first 6 bytes of the MESH_TAG
-static uint8_t MESH_ID[6] = { 0x65, 0x73, 0x70, 0x33, 0x32, 0x2D};
+char * SUPPORT_EMAIL = "support@milos.com";
+char * USER_EMAIL = NULL;
 
 /*******************************************************
  *                Variable Definitions for Mesh
  *******************************************************/
+// MESH ID must be a 6-byte array to identify the mesh network and its created from the first 6 bytes of the MESH_TAG
+static uint8_t MESH_ID[6] = { 0x65, 0x73, 0x70, 0x33, 0x32, 0x2D};
 static bool is_running = true;
 static mesh_addr_t mesh_parent_addr;
 static int mesh_layer = -1;
@@ -58,9 +57,6 @@ static mesh_addr_t s_route_table[CONFIG_MESH_ROUTE_TABLE_SIZE];
 static int s_route_table_size = 0;
 static SemaphoreHandle_t s_route_table_lock = NULL;
 static uint8_t s_mesh_tx_payload[CONFIG_MESH_ROUTE_TABLE_SIZE * 6 + 1];
-/*For button pressing*/
-static unsigned long int last_time = 0;
-static bool last_status_is_pressed = true;
 
 /*******************************************************
  *       Variable Global Definitions for MQTT
@@ -73,6 +69,11 @@ mqtt_queues_t *mqtt_queues = NULL;
  ******************************************************
 */
 #define GPIO_NETWORK_MANAGER_CONFIGURED 2
+/* Reset button*/
+#define GPIO_RESET_BUTTON 13
+static unsigned long int last_time = 0;
+static bool last_status_is_pressed = true;
+
 
 void static recv_cb(mesh_addr_t *from, mesh_data_t *data) {
     if (data->data[0] == CMD_ROUTE_TABLE)
@@ -121,66 +122,71 @@ void task_mesh_table_routing(void *args) {
     vTaskDelete(NULL);
 }
 
-void task_notify_new_device_id(void *args) {
-    ESP_LOGI(MESH_TAG, "STARTED: task_notify_new_device_id");
-    mqtt_queues_t *mqtt_queues = (mqtt_queues_t *) args;
 
-    char * device_topic = create_topic("devices", "report", false);
-
-    uint8_t macAp[6];
-    esp_wifi_get_mac(WIFI_IF_AP, macAp);
+char * new_device() {
+    char *macAp = get_mac_ap();
     
     cJSON * device_id = cJSON_CreateObject();
     cJSON_AddStringToObject(device_id, "mesh_id", MESH_TAG);
-    cJSON_AddStringToObject(device_id, "device_id", mac_to_hex_string(macAp));
+    cJSON_AddStringToObject(device_id, "device_id", macAp);
     cJSON * tasks_array = get_all_tasks_metrics_json();
     cJSON_AddItemToObject(device_id, "tasks", tasks_array);
-
     // if we have relays we add the relay state
     cJSON * relays_array = get_relay_state();
     cJSON_AddItemToObject(device_id, "relays", relays_array);
 
-
     char * device_id_msg = cJSON_Print(device_id);
+    return device_id_msg;
+}
 
+char * new_user(char *email, size_t count) {
+    if (count == 5) {
+        return NULL;
+    }
+    if (esp_mesh_is_root()) {
+        char *new_user_message;
+        asprintf(&new_user_message, "{\"mesh_id\": \"%s\", \"email\": \"%s\", \"account_role\": \"owner\", \"referer\":  \"%s\"}", MESH_TAG, email, email);
+        return new_user_message;
+    }
+    return NULL;
+}
+
+void task_notify_new_device(void *args) {
+    ESP_LOGI(MESH_TAG, "STARTED: task_notify_new_device");
+    mqtt_queues_t *mqtt_queues = (mqtt_queues_t *) args;
+
+    char * new_user_topic = create_topic("usersync", "", false);
+    char * device_topic = create_topic("devices", "report", false);
+    size_t new_user_message_sent = 0;
+
+    ESP_LOGI(MESH_TAG, "USER_EMAIL: %s SUPPORT_EMAIL: %s", USER_EMAIL, SUPPORT_EMAIL);
+    
     while (1) {
-        ESP_LOGI(MESH_TAG, "Trying to queue message: %s", device_id_msg);
-        if (mqtt_queues->mqttPublisherQueue != NULL) {
-            publish(device_topic, device_id_msg);
-            ESP_LOGI(MESH_TAG, "queued done: %s - %s", device_topic, device_id_msg);
+        char * new_user_msg = new_user(USER_EMAIL == NULL? SUPPORT_EMAIL: USER_EMAIL, new_user_message_sent++);
+        char * device_msg = new_device();
+        if (new_user_msg != NULL) {
+            ESP_LOGI(MESH_TAG, "Trying to queue message: %s", new_user_msg);
+            if (mqtt_queues->mqttPublisherQueue != NULL) {
+                publish(new_user_topic, new_user_msg);
+                ESP_LOGI(MESH_TAG, "queued done: %s", new_user_msg);
+            }
         }
-        free(device_id_msg);
+        if (device_msg != NULL) {
+            ESP_LOGI(MESH_TAG, "Trying to queue message: %s", device_msg);
+            if (mqtt_queues->mqttPublisherQueue != NULL) {
+                publish(device_topic, device_msg);
+                ESP_LOGI(MESH_TAG, "queued done: %s", device_msg);
+            }
+        }
+        free(device_msg);
+        free(new_user_msg);
         vTaskDelay(24 * 3600 * 1000 / portTICK_PERIOD_MS);
     }
+    free(new_user_topic);
     free(device_topic);
-    free(device_id_msg);
     vTaskDelete(NULL);
 }
 
-void task_notify_new_user_connected(void *args) {
-    if (esp_mesh_is_root()) {
-        ESP_LOGI(MESH_TAG, "STARTED: task_notify_new_mesh");
-        mqtt_queues_t *mqtt_queues = (mqtt_queues_t *) args;
-        char *device_id_msg;
-
-        char * device_topic = create_topic("usersync", EMAIL, false);
-        for (int i = 0; i < 5; i++) {
-            uint8_t macAp[6];
-            esp_wifi_get_mac(WIFI_IF_AP, macAp);
-            asprintf(&device_id_msg, "{\"mesh_id\": \"%s\", \"email\": \"%s\", \"account_role\": \"owner\", \"referer\":  \"%s\"}", MESH_TAG, EMAIL, EMAIL);
-
-            ESP_LOGI(MESH_TAG, "Trying to queue message: %s", device_id_msg);
-            if (mqtt_queues->mqttPublisherQueue != NULL) {
-                publish(device_topic, device_id_msg);
-                ESP_LOGI(MESH_TAG, "queued done: %s - %s", device_topic, device_id_msg);
-            }
-            free(device_id_msg);
-            vTaskDelay(24 * 3600 * 1000 / portTICK_PERIOD_MS);
-        }
-        free(device_topic);
-    }
-    vTaskDelete(NULL);
-}
 
 void task_mqtt_graph(void *args) {
     ESP_LOGI(MESH_TAG, "STARTED: task_mqtt_graph");
@@ -238,10 +244,7 @@ void task_mqtt_client_start(void *args) {
 
     ESP_LOGI(MESH_TAG, "STARTED: task_mqtt_client_start");
 
-    uint8_t macSta[6];
-    esp_wifi_get_mac(WIFI_IF_STA, macSta);
-    clientIdentifier = (char *) malloc(18 * sizeof(char));
-    sprintf(clientIdentifier, MACSTR, MAC2STR(macSta));
+    clientIdentifier  = create_client_identifier();
 
     // get list of topics to subscribe to
     char **topics_list = get_topics_list();
@@ -387,8 +390,7 @@ esp_err_t esp_tasks_runner(void) {
             .active = 1 // active
         });
         xTaskCreate(task_mqtt_graph, "Graph logging task", 3072, (void *)mqtt_queues, 5, NULL);
-        xTaskCreate(task_notify_new_device_id, "Notify new device in mesh", 3072, (void *)mqtt_queues, 5, NULL);
-        xTaskCreate(task_notify_new_user_connected, "Notify new user mail connected", 3072, (void *)mqtt_queues, 5, NULL);
+        xTaskCreate(task_notify_new_device, "Notify new device", 3072, (void *)mqtt_queues, 5, NULL);
         is_comm_mqtt_task_started = true;
     }
     return ESP_OK;
@@ -640,9 +642,9 @@ void app_start(void) {
     persistence_get_str(handler, "password", &pwd);
     persistence_get_u8(handler, "channel", &channel);
     persistence_get_str(handler, "MESH_TAG", &MESH_TAG);
-    persistence_get_str(handler, "EMAIL", &EMAIL);
+    persistence_get_str(handler, "EMAIL", &USER_EMAIL);
 
-    if (ssid == NULL || pwd == NULL || EMAIL == NULL) {
+    if (ssid == NULL || pwd == NULL || USER_EMAIL == NULL) {
         ESP_LOGE("esp32", "[app_start] Error: Network manager not configured");
         vTaskDelay(10000 / portTICK_PERIOD_MS);
         persistence_erase_namespace(NETWORK_MANAGER_PERSISTENCE_NAMESPACE);
@@ -722,7 +724,7 @@ void set_config_led(bool status) {
 void check_pin_status() {
     ESP_LOGI(MESH_TAG, "[check_pin_status] Intializing button check");
     while(1) {
-        bool pressed = !(bool) gpio_get_level(RST_BTN);
+        bool pressed = !(bool) gpio_get_level(GPIO_RESET_BUTTON);
         unsigned long int now = xTaskGetTickCount() / configTICK_RATE_HZ;
 
         if (pressed == last_status_is_pressed) {
@@ -754,8 +756,8 @@ void check_pin_status() {
 }
 
 esp_err_t config_button(void) {
-    gpio_reset_pin(RST_BTN);
-    gpio_set_direction(RST_BTN, GPIO_MODE_INPUT);
+    gpio_reset_pin(GPIO_RESET_BUTTON);
+    gpio_set_direction(GPIO_RESET_BUTTON, GPIO_MODE_INPUT);
     return ESP_OK;
 }
 

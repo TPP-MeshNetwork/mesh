@@ -33,7 +33,7 @@ void create_sensor_task(char *task_name, char * sensor_type, char * sensor_metri
     sensor_task->mqtt_queues = mqtt_queues;
 
     // add task mapping task_name to id
-    int task_id = add_task_mapping(task_name, sensor_metrics);
+    int task_id = add_task_mapping(task_name, sensor_type, sensor_metrics);
     
     if (task_id == -1) {
         ESP_LOGI(MESH_TAG, "Task mapping already exists");
