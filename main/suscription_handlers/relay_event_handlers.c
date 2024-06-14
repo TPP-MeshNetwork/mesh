@@ -1,7 +1,7 @@
 /* 
 *   This file contains the event handlers for the relay suscriptions
 *   Topic: /mesh/[mesh_id]/devices/[device_id]/relay
-*   Publishes on the topic: /mesh/[mesh_id]/devices/[device_id]/relay/dashboard
+*   Publishes on the topic: /mesh/[mesh_id]/relay/dashboard
 */
 #include "../relays/relays.h"
 
@@ -67,6 +67,7 @@ void relay_event_handler(char* topic, char* message) {
             cJSON *payload_array = get_relay_state();
              // add relay json inside payloadResp
             cJSON_AddItemToObject(payload_resp, "relay", payload_array);
+            cJSON_Delete(payload_array);
             
             char * msg_read = create_message_relay("read", payload_resp);
             message = create_mqtt_message(msg_read);
@@ -156,4 +157,5 @@ void relay_event_handler(char* topic, char* message) {
             free(message);
         }
     }
+    cJSON_Delete(root);
 }
