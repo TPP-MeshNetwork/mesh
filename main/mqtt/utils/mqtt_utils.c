@@ -15,9 +15,30 @@ void publish(const char *topic, const char *message) {
     xQueueSend(publishQueue, &mqtt_message, 0);
 }
 
-char *create_message(char *message) {
+cJSON * merge_json_objects(cJSON *a, cJSON *b) {
+    cJSON *res = cJSON_CreateObject();
+    if (res == NULL) {
+        // Handle error
+        return NULL;
+    }
+
+    // Merge elements from 'a'
+    cJSON *node = NULL;
+    cJSON_ArrayForEach(node, a) {
+        cJSON_AddItemToObject(res, node->string, cJSON_Duplicate(node, 1));
+    }
+
+    // Merge elements from 'b'
+    cJSON_ArrayForEach(node, b) {
+        cJSON_AddItemToObject(res, node->string, cJSON_Duplicate(node, 1));
+    }
+
+    return res;
+}
+
+char * create_mqtt_message(char *message) {
     if (message == NULL) {
-        ESP_LOGE(MESH_TAG, "Error in create_message message is NULL");
+        ESP_LOGE(MESH_TAG, "Error in create_mqtt_message message is NULL");
         return NULL;
     }
 
@@ -27,8 +48,33 @@ char *create_message(char *message) {
 
     uint8_t macAp[6];
     esp_wifi_get_mac(WIFI_IF_AP, macAp);
-    char * new_message;
-    asprintf(&new_message, "{\"mesh_id\": \"%s\", \"device_id\": \"" MACSTR "\", \"timestamp_value\": %lld, %s }", MESH_TAG, MAC2STR(macAp), now, message);
+
+
+    cJSON *root = cJSON_CreateObject();
+    cJSON_AddStringToObject(root, "mesh_id", MESH_TAG);
+    char * macApStr = get_mac_ap();
+    cJSON_AddStringToObject(root, "device_id", macApStr);
+    cJSON_AddNumberToObject(root, "timestamp_value", now);
+    cJSON *json_message = cJSON_Parse(message);
+    free(macApStr);
+
+    if (json_message == NULL) {
+        ESP_LOGE(MESH_TAG, "Error in create_message: json_message is NULL");
+        cJSON_Delete(root);
+        return NULL;
+    }
+
+    // add json_message in the same level as root merged = root Note: do not free root
+    cJSON *merged = merge_json_objects(root, json_message);
+    cJSON_Delete(root);
+    cJSON_Delete(json_message);
+
+    if (merged == NULL) {
+        return NULL;
+    }
+
+    char *new_message = cJSON_PrintUnformatted(merged);
+    cJSON_Delete(merged);
     return new_message;
 }
 

@@ -6,6 +6,23 @@
 #include "../relays/relays.h"
 
 
+char * create_message_relay(char* type, cJSON* payload) {
+    cJSON *root = cJSON_CreateObject();
+    cJSON_AddStringToObject(root, "action", "relay");
+    cJSON_AddStringToObject(root, "sender_client_id", clientIdentifier);
+    cJSON_AddStringToObject(root, "type", type);
+    cJSON *firmware = cJSON_CreateObject();
+    cJSON_AddStringToObject(firmware, "version", FIRMWARE_VERSION);
+    cJSON_AddItemToObject(root, "firmware", firmware);
+
+    if (payload != NULL)
+        cJSON_AddItemToObject(root, "payload", payload);
+    
+    char *message = cJSON_PrintUnformatted(root);
+    cJSON_free(root);
+    return message;
+}
+
 /*
   * Function: relay_event_handler
   * ----------------------------
@@ -46,25 +63,23 @@ void relay_event_handler(char* topic, char* message) {
             // {"action":"read","sender_client_id":"iotconsole-a7124307-8b16-4083-ad16-a23a60eb898b","type":"relay"}
 
             // Create the payload object
-            cJSON *payloadObj = cJSON_CreateObject();
-            cJSON_AddStringToObject(payloadObj, "action", "read");
-            cJSON_AddStringToObject(payloadObj, "sender_client_id", clientIdentifier);
-            cJSON_AddStringToObject(payloadObj, "type", "relay");
-
-            cJSON *relays_array = get_relay_state();
-
-            cJSON_AddItemToObject(payloadObj, "payload", relays_array);            
-
-            char *payload_str = cJSON_Print(payloadObj);
-            cJSON_Delete(payloadObj);
+            cJSON *payload_resp = cJSON_CreateObject();
+            cJSON *payload_array = get_relay_state();
+             // add relay json inside payloadResp
+            cJSON_AddItemToObject(payload_resp, "relay", payload_array);
+            
+            char * msg_read = create_message_relay("read", payload_resp);
+            message = create_mqtt_message(msg_read);
+            free(msg_read);
+            cJSON_Delete(payload_resp);
 
             // Create the topic
             char *topic = create_topic("relay", "dashboard", false);
 
             // Publish the message
-            publish(topic, payload_str);
+            publish(topic, message);
             free(topic);
-            free(payload_str);
+            free(message);
         } else if (!strcmp(action, "write")) {
             // Write the relay configuration
             // Example:
@@ -72,74 +87,73 @@ void relay_event_handler(char* topic, char* message) {
             //     "action": "write",
             //     "sender_client_id": "iotconsole-a7124307-8b16-4083-ad16-a23a60eb898b", 
             //     "type": "relay",
-            //     "payload": [{
+            //     "payload": { 
+            //       "relay": [{
             //         "relay_id": 1,
             //         "state": 1
-            //     }]
+            //       }],
+            //    }
             // }
             // Minified Example:
             // {"action":"write","sender_client_id":"iotconsole-a7124307-8b16-4083-ad16-a23a60eb898b","type":"relay","payload": [{"relay_id": 1, "state": 1}]}
-            
-            // Creating the response payload object
-            cJSON *payloadResObj = cJSON_CreateObject();
-            cJSON_AddStringToObject(payloadResObj, "action", "write");
-            cJSON_AddStringToObject(payloadResObj, "sender_client_id", clientIdentifier);
-            cJSON_AddStringToObject(payloadResObj, "type", "relay");
 
             // create array for payload
-            cJSON *payloadArray = cJSON_CreateArray();
+            cJSON *payload_resp = cJSON_CreateObject();
+            cJSON *payload_array = cJSON_CreateArray();
             
             int relay_len = cJSON_GetArraySize(payload);
             // for each element of the array of relays
             for (size_t i = 0; i< relay_len; i++) {
                 // get the relay item from the array
-                cJSON *payloadItem = cJSON_GetArrayItem(payload, i);
+                cJSON *payload_item = cJSON_GetArrayItem(payload, i);
                 // Getting the relay_id and state
-                int relay_id = cJSON_GetObjectItem(payloadItem, "relay_id")->valueint;
-                int state = cJSON_GetObjectItem(payloadItem, "state")->valueint;
+                int relay_id = cJSON_GetObjectItem(payload_item, "relay_id")->valueint;
+                int state = cJSON_GetObjectItem(payload_item, "state")->valueint;
 
-                cJSON *itemRelay = cJSON_CreateObject();
-                cJSON_AddNumberToObject(itemRelay, "relay_id", relay_id);
+                cJSON *item_relay = cJSON_CreateObject();
+                cJSON_AddNumberToObject(item_relay, "relay_id", relay_id);
                 
                 // Check values of state
                 if ( state != 0 && state != 1) {
-                    cJSON_AddStringToObject(itemRelay, "status", "error");
-                    cJSON_AddStringToObject(itemRelay, "message", "Invalid state value");
-                    cJSON_AddItemToArray(payloadArray, itemRelay);
+                    cJSON_AddStringToObject(item_relay, "status", "error");
+                    cJSON_AddStringToObject(item_relay, "message", "Invalid state value");
+                    cJSON_AddItemToArray(payload_array, item_relay);
                     continue;
                 }
 
-                cJSON_AddNumberToObject(itemRelay, "state", state);
+                cJSON_AddNumberToObject(item_relay, "state", state);
                 switch(relay_id) {
                     case 1:
                         gpio_set_level(RELAY1_PIN, state);
-                        cJSON_AddStringToObject(itemRelay, "status", "ok");
+                        cJSON_AddStringToObject(item_relay, "status", "ok");
                         break;
                     case 2:
                         gpio_set_level(RELAY2_PIN, state);
-                        cJSON_AddStringToObject(itemRelay, "status", "ok");
+                        cJSON_AddStringToObject(item_relay, "status", "ok");
                         break;
                     default:
-                        cJSON_AddStringToObject(itemRelay, "status", "error");
-                        cJSON_AddStringToObject(itemRelay, "message", "Invalid relay_id");
+                        cJSON_AddStringToObject(item_relay, "status", "error");
+                        cJSON_AddStringToObject(item_relay, "message", "Invalid relay_id");
                         break;
                 }
-                cJSON_AddItemToArray(payloadArray, itemRelay);
+                cJSON_AddItemToArray(payload_array, item_relay);
             }
 
-            // add payloadResp to the response object
-            cJSON_AddItemToObject(payloadResObj, "payload", payloadArray);
+            // add relay json inside payloadResp
+            cJSON_AddItemToObject(payload_resp, "relay", payload_array);
             
-            char *payload_str = cJSON_Print(payloadResObj);
-            cJSON_Delete(payloadResObj);
+            char * msg_read = create_message_relay("write", payload_resp);
+            message = create_mqtt_message(msg_read);
+            free(msg_read);
+            cJSON_Delete(payload_resp);
 
             // Create the topic
             char *topic = create_topic("relay", "dashboard", false);
 
             // Publish the message
-            publish(topic, payload_str);
+            publish(topic, message);
             free(topic);
-            free(payload_str);
+            free(message);
         }
     }
 }

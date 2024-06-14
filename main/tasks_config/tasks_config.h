@@ -38,7 +38,7 @@ typedef struct {
 
 void add_task_config(int task_id, char * type, Config_t config);
 Config_t * get_task_config(int task_id);
-void update_task_config(int task_id, Config_t config);
+Config_t* update_task_config(int task_id, Config_t config);
 void validate_task_config(Config_t *config);
 Config_t ** get_all_tasks_config();
 void save_task_config(int task_id);

@@ -16,6 +16,8 @@
 
 extern char *clientIdentifier;
 extern mqtt_queues_t *mqtt_queues;
+extern char * FIRMWARE_VERSION;
+
 
 void relay_init();
 cJSON* get_relay_state();

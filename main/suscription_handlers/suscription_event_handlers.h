@@ -7,6 +7,7 @@
 #include "mqtt/utils/mqtt_utils.h"
 #include "mqtt_queue.h"
 #include "tasks_config.h"
+#include "../mqtt/utils/mqtt_utils.h"
 
 /* suscriber_config_handler
 *  Description: Event handler for the config global suscription
@@ -25,5 +26,8 @@ typedef struct {
     char *message;
     void (*handler)(char*, char*);
 } suscription_event_handler_t;
+
+extern char * FIRMWARE_VERSION;
+extern char * FIRMWARE_REVISION;
 
 #endif // SUSCRIPTION_EVENT_HANDLERS_H

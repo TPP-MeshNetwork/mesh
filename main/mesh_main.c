@@ -34,7 +34,7 @@
 #include "reset_button/reset_button.h"
 
 /*******************************************************
- *                Macros
+ *                Macros MESH
  *******************************************************/
 #define CMD_ROUTE_TABLE 0x56
 
@@ -44,6 +44,9 @@
 char * MESH_TAG = "esp32-mesh";
 char * SUPPORT_EMAIL = "support@milos.com";
 char * USER_EMAIL = NULL;
+
+char * FIRMWARE_VERSION = "v1.0.0";
+char * FIRMWARE_REVISION = "rev0.1";
 
 /*******************************************************
  *                Variable Definitions for Mesh
@@ -183,44 +186,62 @@ void task_mqtt_graph(void *args) {
     is_running = true;
     char *graph_message;
     mqtt_queues_t *mqtt_queues = (mqtt_queues_t *)args;
+
     // get the parent of this node
     mesh_addr_t parent;
     esp_mesh_get_parent_bssid(&parent);
+    char * parent_mac = (char*) malloc(18 * sizeof(char));
+    sprintf(parent_mac, MACSTR, MAC2STR(parent.addr));
 
     // mac addr STA of this node to string
-    uint8_t macSta[6];
-    esp_wifi_get_mac(WIFI_IF_STA, macSta);
-
+    char * macSta = get_mac_sta();
     // mac addr AP of this node to string
-    uint8_t macAp[6];
-    esp_wifi_get_mac(WIFI_IF_AP, macAp);    
+    char * macAp = get_mac_ap();
 
     char * topic = create_topic("graph", "report", false);
 
     while (is_running) {
         log_memory(); // for debugging memory leaks
 
+        cJSON * memory_stats = get_memory_stats();
+
+        // create cJSON object with the data
+        cJSON *graph_data = cJSON_CreateObject();
+        cJSON_AddNumberToObject(graph_data, "layer", esp_mesh_get_layer());
+
         if (esp_mesh_is_root()) {
+            cJSON_AddStringToObject(graph_data, "root", "true");
+            cJSON_AddStringToObject(graph_data, "macSta", macSta);
+            cJSON_AddStringToObject(graph_data, "macSoftap", macAp);
             // the root node has no parent so instead we get the WIFI_IF_AP -> WIFI_IF_STA
-            asprintf(&graph_message, "\"layer\": %d, \"root\": true, \"macSta\": \"" MACSTR "\", \"macSoftap\": \"" MACSTR "\"", esp_mesh_get_layer(), MAC2STR(macSta), MAC2STR(macAp));
-        }
-        else {
-            asprintf(&graph_message, "\"layer\": %d, \"root\": false, \"macSta\": \"" MACSTR "\", \"macSoftap\": \"" MACSTR "\"", esp_mesh_get_layer(), MAC2STR(parent.addr), MAC2STR(macAp));
+        } else {
+            cJSON_AddStringToObject(graph_data, "root", "false");
+            cJSON_AddStringToObject(graph_data, "macSta", parent_mac);
+            cJSON_AddStringToObject(graph_data, "macSoftap", macAp);
         }
 
-        char *message = create_message(graph_message);
+        // Adding perfomance metrics
+        cJSON_AddNumberToObject(graph_data, "uptime", get_uptime());
+        cJSON_AddItemToObject(graph_data, "memory", memory_stats);
+
+        graph_message = cJSON_PrintUnformatted(graph_data);
+        cJSON_Delete(graph_data);
+
+        char *message = create_mqtt_message(graph_message);
 
         ESP_LOGI(MESH_TAG, "Trying to queue message: %s", message);
-        if (mqtt_queues->mqttPublisherQueue != NULL)
-        {
+        if (mqtt_queues->mqttPublisherQueue != NULL) {
             publish(topic, message);
             ESP_LOGI(MESH_TAG, "queued done: %s", message);
         }
-        free(graph_message);
         free(message);
+        free(graph_message);
         vTaskDelay(pdMS_TO_TICKS(3000));
     }
     free(topic);
+    free(parent_mac);
+    free(macSta);
+    free(macAp);
     vTaskDelete(NULL);
 }
 
@@ -328,7 +349,7 @@ void task_suscribers_events(void *args) {
                         event_handler_data->message = strdup(message);
                         event_handler_data->handler = s->event_handler;
                         // create a new task to execute the event handler so that this receiver task doesnt block by the handler
-                        xTaskCreate(task_suscriber_event_executor, "task_suscriber_event_executor", 3072, (void *)event_handler_data, 5, NULL);
+                        xTaskCreate(task_suscriber_event_executor, "task_suscriber_event_executor", 5072, (void *)event_handler_data, 5, NULL);
                     }
                     free(message);
                 }
@@ -365,21 +386,21 @@ esp_err_t esp_tasks_runner(void) {
 
     if (!is_comm_mqtt_task_started) {
         xTaskCreate(task_mesh_table_routing, "mqtt routing-table", 2048, NULL, 5, NULL);
-        vTaskDelay(5000 / portTICK_PERIOD_MS);
+        vTaskDelay(2000 / portTICK_PERIOD_MS);
         xTaskCreate(task_mqtt_client_start, "mqtt task-aws", 8096, (void *)mqtt_queues, 5, NULL);
         xTaskCreate(task_suscribers_events, "Task that reads suscription events", 8096, NULL, 5, NULL);
         
-        vTaskDelay(2000 / portTICK_PERIOD_MS);
+        vTaskDelay(1000 / portTICK_PERIOD_MS);
         char * sensor_metrics[] = {"temperature", "humidity", NULL};
 
         create_sensor_task("task_sensor_dht11", "dht11", sensor_metrics ,task_sensor_dht11, (void *) mqtt_queues, (Config_t) {
             .max_polling_time = 0,  // 0 means no max time restriction
             .min_polling_time = 1000, // 1 second
-            .polling_time = 10000, // 10 seconds
+            .polling_time = 20000, // 20 seconds
             .active = 1 // active
         });
         xTaskCreate(task_mqtt_graph, "Graph logging task", 3072, (void *)mqtt_queues, 5, NULL);
-        xTaskCreate(task_notify_new_device, "Notify new device", 3072, (void *)mqtt_queues, 5, NULL);
+        // xTaskCreate(task_notify_new_device, "Notify new device", 3072, (void *)mqtt_queues, 5, NULL);
         is_comm_mqtt_task_started = true;
     }
     return ESP_OK;
@@ -623,6 +644,10 @@ void ip_event_handler(void *arg, esp_event_base_t event_base,
         ESP_LOGE("[task_suscribers_events]", " Failed to update system time within 10s timeout");
         esp_restart();
     }
+
+    // Setting the perfomance uptime value
+    set_uptime();
+
     esp_tasks_runner();
 }
 
@@ -703,8 +728,6 @@ void app_start(void) {
     /*  crete network interfaces for mesh (only station instance saved for further manipulation, soft AP instance ignored */
     ESP_ERROR_CHECK(mesh_netifs_init(recv_cb));
 
-    // for testing 
-    channel = 1;
     // This function check the active channel and changes it if necessary
     check_wifi_channel(ssid, &channel);    
 
