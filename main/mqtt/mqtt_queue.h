@@ -10,7 +10,7 @@
 extern int queueSize;
 extern int suscriberQueueSize;
 #define MAX_TOPIC_LENGTH 255
-#define MAX_MESSAGE_LENGTH 512
+#define MAX_MESSAGE_LENGTH 1024
 
 typedef struct {
     char topic[MAX_TOPIC_LENGTH];                    /* key topic */

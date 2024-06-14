@@ -66,8 +66,8 @@ void task_sensor_dht11(void *args) {
         }
 
         for (size_t i = 0; i < sensor_length; i++) {
-            asprintf(&sensor_message, " \"sensor_type\": \"%s\", \"sensor_value\": %.1f ", sensor_metrics[i], sensor_data[i]);
-            char *message = create_message(sensor_message);
+            asprintf(&sensor_message, " {\"sensor_type\": \"%s\", \"sensor_value\": %.1f }", sensor_metrics[i], sensor_data[i]);
+            char *message = create_mqtt_message(sensor_message);
 
             ESP_LOGI(MESH_TAG, "Trying to queue message: %s", message);
             if (mqtt_queues->mqttPublisherQueue != NULL) {

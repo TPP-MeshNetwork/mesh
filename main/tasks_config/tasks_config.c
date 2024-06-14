@@ -60,7 +60,7 @@ Config_t * get_task_config(int task_id) {
       return NULL;
     }
     // peek the first value of the queue
-    Config_t *task_config_value = (Config_t *)malloc(sizeof(Config_t));
+    Config_t *task_config_value = (Config_t *) malloc(sizeof(Config_t));
     xQueuePeek(task_config->config, task_config_value, 0);
     return task_config_value;
 }
@@ -104,36 +104,45 @@ Config_t ** get_all_tasks_config() {
     * config: The config of the task
 
 */
-void update_task_config(int task_id, Config_t config) {
+Config_t* update_task_config(int task_id, Config_t new_config) {
 
     TasksConfig_t *task_config;
     HASH_FIND_INT(tasks_config, &task_id, task_config);
     ESP_LOGI("[update_task_config]", "Updating task id: %d config", task_id);
 
     // create a new config
-    Config_t *config_ = (Config_t *) malloc(sizeof(Config_t));
-    config_->polling_time = config.polling_time;
-    config_->active = config.active;
+    Config_t *config = (Config_t *) malloc(sizeof(Config_t));
 
     Config_t old_config;
     // remove the old config
     xQueueReceive(task_config->config, &old_config, 0);
 
-    // do not change min or max polling time
-    config_->min_polling_time = old_config.min_polling_time;
-    config_->max_polling_time = old_config.max_polling_time;
-
+    // copy old values onto config
+    config->task_id = task_id;
+    config->max_polling_time = old_config.max_polling_time;
+    config->min_polling_time = old_config.min_polling_time;
+    config->polling_time = new_config.polling_time;
+    config->active = new_config.active;
+    
+    // set new values for polling_time and active
+    old_config.polling_time = new_config.polling_time;
+    old_config.active = new_config.active;
+    
+    // validate the new config
+    validate_task_config(config);
 
     // send the new config to the queue
-    xQueueSend(task_config->config, config_, 0);
+    xQueueSend(task_config->config, config, 0);
 
-    if (old_config.polling_time != config.polling_time) {
-        ESP_LOGI("[update_task_config]", "Updating polling_time: %d", config.polling_time);
+    if (old_config.polling_time != new_config.polling_time) {
+        ESP_LOGI("[update_task_config]", "Updating polling_time: %d", new_config.polling_time);
     
     }
-    if (old_config.active != config.active) {
-        ESP_LOGI("[update_task_config]", "Updating active: %d", config.active);
+    if (old_config.active != new_config.active) {
+        ESP_LOGI("[update_task_config]", "Updating active: %d", new_config.active);
     }
+
+    return config;
 }
 
 /*

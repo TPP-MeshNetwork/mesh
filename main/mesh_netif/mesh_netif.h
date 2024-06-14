@@ -92,3 +92,10 @@ uint8_t* mesh_netif_get_station_mac(void);
  * @return String (char*) to MAC address
 */
 char * get_mac_ap(void);
+
+/**
+ * @brief Returns MAC address of the STA interface
+ * 
+ * @return String (char*) to MAC address
+*/
+char * get_mac_sta(void);

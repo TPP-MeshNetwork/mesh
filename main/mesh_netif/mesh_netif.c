@@ -471,3 +471,11 @@ char * get_mac_ap() {
     sprintf(mac_ap, MACSTR, MAC2STR(macAp));
     return mac_ap;
 }
+
+char * get_mac_sta() {
+    uint8_t macSta[6];
+    esp_wifi_get_mac(WIFI_IF_STA, macSta);
+    char * mac_sta = (char *) malloc(18 * sizeof(char));
+    sprintf(mac_sta, MACSTR, MAC2STR(macSta));
+    return mac_sta;
+}
