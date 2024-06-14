@@ -1,3 +1,6 @@
+#ifndef PERSISTENCE_H
+#define PERSISTENCE_H
+
 #include "esp_log.h"
 #include "nvs_flash.h"
 
@@ -18,3 +21,5 @@ persistence_err_t persistence_get_str(persistence_handler_t handler, const char 
 persistence_err_t persistence_set_str(persistence_handler_t handler, const char *key, const char *value);
 persistence_err_t persistence_set_u8(persistence_handler_t handler, const char *key, uint8_t value);
 persistence_err_t persistence_get_u8(persistence_handler_t handler, const char *key, uint8_t *value);
+
+#endif // PERSISTENCE_H

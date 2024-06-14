@@ -20,6 +20,8 @@ idf_component_register(SRCS # Main files Mesh
                             "tasks_config/tasks_config.c"
                             # Relay files
                             "relays/relays.c"
+                            # Reset Button
+                            "reset_button/reset_button.c"
                      INCLUDE_DIRS "." 
                                  "mesh_netif"
                                  "mqtt"
@@ -31,4 +33,5 @@ idf_component_register(SRCS # Main files Mesh
                                  "tasks_config"
                                  "relays"
                                  "utils"
+                                 "reset_button"
                         )
