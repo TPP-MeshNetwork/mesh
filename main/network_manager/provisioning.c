@@ -418,6 +418,22 @@ esp_err_t app_wifi_start(ConfigCallback* callback) {
     return ESP_OK;
 }
 
+char * base64_encode(const char *input) {
+    size_t input_len = strlen(input);
+    size_t olen = 0; // output length
+    size_t output_len = 4 * ((strlen(input) + 2) / 3) + 1;
+    char * output = malloc(sizeof(char) * output_len);
+
+    int ret = mbedtls_base64_encode((unsigned char *)output, output_len, &olen, (const unsigned char *)input, input_len);
+    if (ret != 0) {
+        ESP_LOGE(MESH_TAG, "Failed to encode base64: %d", ret);
+        return NULL;
+    }
+
+    output[olen] = '\0'; // Null-terminate the output string
+    return output;
+}
+
 void network_manager_callback(char *ssid, uint8_t channel, char *password, char *mesh_name, char *email) {
     ESP_LOGI(MESH_TAG, "[network_manager_callback] called");
     // TODO: hide password from logs 
@@ -427,7 +443,24 @@ void network_manager_callback(char *ssid, uint8_t channel, char *password, char 
     persistence_set_str(handler, "password", password);
     persistence_set_u8(handler, "channel", channel);
     persistence_set_u8(handler, "configured", CONFIGURED_FLAG);
+    // set the mesh_tag with the mesh_name and base64(email)
+    // char *delimiter = "__";
+    // char * unique_mail_encode = base64_encode(email);
+    // if (unique_mail_encode == NULL) {
+    //     ESP_LOGE(MESH_TAG, "Failed to encode email to base64");
+    //     // reset the device
+    //     persistence_erase_namespace(NETWORK_MANAGER_PERSISTENCE_NAMESPACE);
+    //     esp_restart();
+    // }
+    // slice in half the unique_mail_encode
+    // unique_mail_encode[strlen(unique_mail_encode)/2] = '\0';
+    // size_t mesh_tag_len = strlen(mesh_name) + strlen(delimiter) + strlen(unique_mail_encode)/2 + 1;
+    // char * mesh_tag = malloc(sizeof(char) * mesh_tag_len);
+    // snprintf(mesh_tag, mesh_tag_len, "%s%s%s", mesh_name, delimiter, unique_mail_encode);
+    // ESP_LOGI(MESH_TAG, "Mesh Tag: %s", mesh_tag);
+    // persistence_set_str(handler, "MESH_TAG", mesh_tag);
     persistence_set_str(handler, "MESH_TAG", mesh_name);
+
     persistence_set_str(handler, "EMAIL", email);
     esp_restart();
 }

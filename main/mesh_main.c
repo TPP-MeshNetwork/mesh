@@ -31,6 +31,7 @@
 #include "sensors/utils/sensor_utils.h"
 #include "tasks_config/tasks_config.h"
 #include "relays/relays.h"
+#include "reset_button/reset_button.h"
 
 /*******************************************************
  *                Macros
@@ -63,16 +64,6 @@ static uint8_t s_mesh_tx_payload[CONFIG_MESH_ROUTE_TABLE_SIZE * 6 + 1];
  *******************************************************/
 char * clientIdentifier = NULL;
 mqtt_queues_t *mqtt_queues = NULL;
-
-/*******************************************************
- *                Network Manager Definitions
- ******************************************************
-*/
-#define GPIO_NETWORK_MANAGER_CONFIGURED 2
-/* Reset button*/
-#define GPIO_RESET_BUTTON 13
-static unsigned long int last_time = 0;
-static bool last_status_is_pressed = true;
 
 
 void static recv_cb(mesh_addr_t *from, mesh_data_t *data) {
@@ -158,8 +149,6 @@ void task_notify_new_device(void *args) {
     char * new_user_topic = create_topic("usersync", "", false);
     char * device_topic = create_topic("devices", "report", false);
     size_t new_user_message_sent = 0;
-
-    ESP_LOGI(MESH_TAG, "USER_EMAIL: %s SUPPORT_EMAIL: %s", USER_EMAIL, SUPPORT_EMAIL);
     
     while (1) {
         char * new_user_msg = new_user(USER_EMAIL == NULL? SUPPORT_EMAIL: USER_EMAIL, new_user_message_sent++);
@@ -561,6 +550,10 @@ void mesh_event_handler(void *arg, esp_event_base_t event_base,
     {
         mesh_event_channel_switch_t *channel_switch = (mesh_event_channel_switch_t *)event_data;
         ESP_LOGI(MESH_TAG, "<MESH_EVENT_CHANNEL_SWITCH>new channel:%d", channel_switch->channel);
+        // save channel in nvs
+        persistence_handler_t handler = persistence_open(NETWORK_MANAGER_PERSISTENCE_NAMESPACE);
+        persistence_set_u8(handler, "channel", channel_switch->channel);
+        persistence_close(handler);
     }
     break;
     case MESH_EVENT_SCAN_DONE:
@@ -633,6 +626,45 @@ void ip_event_handler(void *arg, esp_event_base_t event_base,
     esp_tasks_runner();
 }
 
+void check_wifi_channel(char * ssid, uint8_t * channel) {
+    // Start WiFi scan for target SSID channel
+    wifi_init_config_t config_scan = WIFI_INIT_CONFIG_DEFAULT();
+    ESP_ERROR_CHECK(esp_wifi_init(&config_scan));
+    ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
+    ESP_ERROR_CHECK(esp_wifi_start());
+    wifi_scan_config_t scan_config = {
+        .ssid = 0,
+        .bssid = 0,
+        .channel = 0,
+        .show_hidden = true
+    };
+    ESP_ERROR_CHECK(esp_wifi_scan_start(&scan_config, true));
+
+    // Get scan results
+    uint16_t number = 10;
+    wifi_ap_record_t ap_info[10];
+    uint16_t ap_count = 0;
+    ESP_ERROR_CHECK(esp_wifi_scan_get_ap_records(&number, ap_info));
+    ESP_ERROR_CHECK(esp_wifi_scan_get_ap_num(&ap_count));
+    ESP_LOGI(MESH_TAG, "Total APs found: %u", ap_count);
+
+    // Process the scan results
+    for (int i = 0; i < ap_count; i++) {
+        if (strcmp((char *)ap_info[i].ssid, ssid) == 0) {
+            uint8_t current_channel = ap_info[i].primary;
+            ESP_LOGI(MESH_TAG, "Found target SSID: %s on channel: %d", ssid, current_channel);
+            if (*channel != current_channel) {
+                ESP_LOGI(MESH_TAG, "Channel changed from %d to %d", *channel, current_channel);
+                persistence_handler_t handler = persistence_open(NETWORK_MANAGER_PERSISTENCE_NAMESPACE);
+                persistence_set_u8(handler, "channel", current_channel);
+                persistence_close(handler);
+            }
+            *channel = current_channel;
+            break;
+        }
+    }
+}
+
 void app_start(void) {
     persistence_handler_t handler = persistence_open(NETWORK_MANAGER_PERSISTENCE_NAMESPACE);
     char* ssid = NULL;
@@ -645,7 +677,7 @@ void app_start(void) {
     persistence_get_str(handler, "EMAIL", &USER_EMAIL);
 
     if (ssid == NULL || pwd == NULL || USER_EMAIL == NULL) {
-        ESP_LOGE("esp32", "[app_start] Error: Network manager not configured");
+        ESP_LOGE(MESH_TAG, "[app_start] Error: Network manager not configured");
         vTaskDelay(10000 / portTICK_PERIOD_MS);
         persistence_erase_namespace(NETWORK_MANAGER_PERSISTENCE_NAMESPACE);
         esp_restart();
@@ -670,6 +702,11 @@ void app_start(void) {
     ESP_ERROR_CHECK(esp_event_loop_create_default());
     /*  crete network interfaces for mesh (only station instance saved for further manipulation, soft AP instance ignored */
     ESP_ERROR_CHECK(mesh_netifs_init(recv_cb));
+
+    // for testing 
+    channel = 1;
+    // This function check the active channel and changes it if necessary
+    check_wifi_channel(ssid, &channel);    
 
     /*  wifi initialization */
     wifi_init_config_t config = WIFI_INIT_CONFIG_DEFAULT();
@@ -711,59 +748,8 @@ void app_start(void) {
     free(pwd);
 }
 
-void init_config_led() {
-    gpio_reset_pin(GPIO_NETWORK_MANAGER_CONFIGURED);
-    gpio_set_direction(GPIO_NETWORK_MANAGER_CONFIGURED, GPIO_MODE_OUTPUT);
-    gpio_set_level(GPIO_NETWORK_MANAGER_CONFIGURED, 0);
-}
-
-void set_config_led(bool status) {
-    gpio_set_level(GPIO_NETWORK_MANAGER_CONFIGURED, status);
-}
-
-void check_pin_status() {
-    ESP_LOGI(MESH_TAG, "[check_pin_status] Intializing button check");
-    while(1) {
-        bool pressed = !(bool) gpio_get_level(GPIO_RESET_BUTTON);
-        unsigned long int now = xTaskGetTickCount() / configTICK_RATE_HZ;
-
-        if (pressed == last_status_is_pressed) {
-            // No hubo cambios en el estado no debo hacer nada
-        } else {
-            if (now - last_time < 1) {
-                // Ingoro por que paso poco tiempo
-            } else {
-                if (!pressed) {
-                    // Soltamos el boton
-                    if (now - last_time > 5) {
-                        ESP_LOGI(MESH_TAG, "[check_pin_status] >>> Button release detected <<<");
-                        ESP_LOGI(MESH_TAG, "[check_pin_status] Erasing persistence and restarting the device");
-                        set_config_led(false);
-                        persistence_erase_namespace(NETWORK_MANAGER_PERSISTENCE_NAMESPACE);
-                        esp_restart();
-                    }
-                } else {
-                    // Presionamos el boton
-                    ESP_LOGI(MESH_TAG, "[check_pin_status] >>> Button press detected <<<");
-                }
-                last_time = now;
-                last_status_is_pressed = pressed;
-            }
-        }
-        vTaskDelay(20/portTICK_PERIOD_MS);
-    }
-    vTaskDelete(NULL);
-}
-
-esp_err_t config_button(void) {
-    gpio_reset_pin(GPIO_RESET_BUTTON);
-    gpio_set_direction(GPIO_RESET_BUTTON, GPIO_MODE_INPUT);
-    return ESP_OK;
-}
-
-
 void app_main(void) {
-    config_button();
+    init_config_button();
     init_config_led();
     ESP_LOGI(MESH_TAG, "%i", ESP_IDF_VERSION);
     vTaskDelay(2000 / portTICK_PERIOD_MS);
@@ -779,10 +765,10 @@ void app_main(void) {
         persistence_handler_t handler = persistence_open(NETWORK_MANAGER_PERSISTENCE_NAMESPACE);
         uint8_t is_configured;
         persistence_err = persistence_get_u8(handler, "configured", &is_configured);
+        xTaskCreate(check_pin_status, "button", 3072, NULL,5,NULL );
         if (is_configured == CONFIGURED_FLAG) {
             ESP_LOGI(MESH_TAG, "[app_main] The device has been configured");
             set_config_led(true);
-            xTaskCreate(check_pin_status, "button", 3072, NULL,5,NULL );
             // Starting the main application that starts the mesh network
             app_start();
         } else {

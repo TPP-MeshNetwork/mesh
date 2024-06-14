@@ -13,6 +13,7 @@
 #include "mdns.h"
 #include "stdbool.h"
 #include "esp_err.h"
+#include "mbedtls/base64.h"
 
 #define UNCONFIGURED_FLAG 0
 #define CONFIGURED_FLAG 1
@@ -28,3 +29,5 @@ esp_err_t app_wifi_start(ConfigCallback* callback);
 *  Description: Callback function to be called when the network manager has the credentials
 */
 void network_manager_callback(char *ssid, uint8_t channel, char *password, char *mesh_name, char *email);
+
+char * base64_encode(const char *input);
