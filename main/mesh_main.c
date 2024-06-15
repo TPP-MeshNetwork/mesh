@@ -149,7 +149,7 @@ void task_notify_new_device(void *args) {
     ESP_LOGI(MESH_TAG, "STARTED: task_notify_new_device");
     mqtt_queues_t *mqtt_queues = (mqtt_queues_t *) args;
 
-    char * new_user_topic = create_topic("usersync", USER_EMAIL == NULL? SUPPORT_EMAIL: USER_EMAIL, false);
+    char * new_user_topic = create_topic("usersync", "", false);
     char * device_topic = create_topic("report", "", true);
     size_t new_user_message_sent = 0;
     
