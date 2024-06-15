@@ -149,8 +149,8 @@ void task_notify_new_device(void *args) {
     ESP_LOGI(MESH_TAG, "STARTED: task_notify_new_device");
     mqtt_queues_t *mqtt_queues = (mqtt_queues_t *) args;
 
-    char * new_user_topic = create_topic("usersync", "", false);
-    char * device_topic = create_topic("devices", "report", false);
+    char * new_user_topic = create_topic("usersync", USER_EMAIL == NULL? SUPPORT_EMAIL: USER_EMAIL, false);
+    char * device_topic = create_topic("report", "", true);
     size_t new_user_message_sent = 0;
     
     while (1) {
@@ -172,7 +172,10 @@ void task_notify_new_device(void *args) {
         }
         free(device_msg);
         free(new_user_msg);
-        vTaskDelay(24 * 3600 * 1000 / portTICK_PERIOD_MS);
+        // vTaskDelay(24 * 3600 * 1000 / portTICK_PERIOD_MS);
+        
+        // every 5 min
+        vTaskDelay(5 * 60 * 1000 / portTICK_PERIOD_MS);
     }
     free(new_user_topic);
     free(device_topic);
@@ -400,7 +403,7 @@ esp_err_t esp_tasks_runner(void) {
             .active = 1 // active
         });
         xTaskCreate(task_mqtt_graph, "Graph logging task", 3072, (void *)mqtt_queues, 5, NULL);
-        // xTaskCreate(task_notify_new_device, "Notify new device", 3072, (void *)mqtt_queues, 5, NULL);
+        xTaskCreate(task_notify_new_device, "Notify new device", 3072, (void *)mqtt_queues, 5, NULL);
         is_comm_mqtt_task_started = true;
     }
     return ESP_OK;
