@@ -14,6 +14,7 @@ idf_component_register(SRCS # Main files Mesh
                             "components/dht.c"
                             "sensors/utils/sensor_utils.c"
                             "sensors/tasks/task_sensor_dht11.c"
+                            "sensors/tasks/task_sensor_performance.c"
                             # Performance files
                             "performance/performance.c"
                             # Tasks config files
