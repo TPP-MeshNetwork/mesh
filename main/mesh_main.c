@@ -394,12 +394,19 @@ esp_err_t esp_tasks_runner(void) {
         xTaskCreate(task_suscribers_events, "Task that reads suscription events", 8096, NULL, 5, NULL);
         
         vTaskDelay(1000 / portTICK_PERIOD_MS);
-        char * sensor_metrics[] = {"temperature", "humidity", NULL};
 
-        create_sensor_task("task_sensor_dht11", "dht11", sensor_metrics ,task_sensor_dht11, (void *) mqtt_queues, (Config_t) {
+        char * sensor_dht11_metrics[] = {"temperature", "humidity", NULL};
+        create_sensor_task("task_sensor_dht11", "dht11", sensor_dht11_metrics ,task_sensor_dht11, (void *) mqtt_queues, (Config_t) {
             .max_polling_time = 0,  // 0 means no max time restriction
             .min_polling_time = 1000, // 1 second
             .polling_time = 20000, // 20 seconds
+            .active = 1 // active
+        });
+        char * sensor_performance_metrics[] = {"free_memory", "min_free_memory", "memory_usage", NULL};
+        create_sensor_task("task_sensor_performance", "esp32-performance", sensor_performance_metrics ,task_sensor_performance, (void *) mqtt_queues, (Config_t) {
+            .max_polling_time = 0,  // 0 means no max time restriction
+            .min_polling_time = 5000, // 5 second
+            .polling_time = 10000, // 10 seconds
             .active = 1 // active
         });
         xTaskCreate(task_mqtt_graph, "Graph logging task", 3072, (void *)mqtt_queues, 5, NULL);
