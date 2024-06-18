@@ -25,7 +25,7 @@ char * create_message_config(char* action, cJSON* payload) {
         cJSON_AddItemToObject(root, "payload", payload);
     
     char *message = cJSON_PrintUnformatted(root);
-    cJSON_free(root);
+    cJSON_Delete(root);
     return message;
 
 }
@@ -110,7 +110,6 @@ void new_config_message(char* action, char* type, char *payload) {
         char * msg_read = create_message_config("read", payloadRet);
         message = create_mqtt_message(msg_read);
         free(msg_read);
-        cJSON_Delete(payloadRet);
 
     } else if (!strcmp(action, "write")) {
         // Write the configuration
@@ -141,7 +140,6 @@ void new_config_message(char* action, char* type, char *payload) {
             publish(create_topic("config", "dashboard", false), message);
             free(message);
             free(msg_write);
-            cJSON_Delete(payloadRet);
             return;
         }
         
@@ -193,7 +191,6 @@ void new_config_message(char* action, char* type, char *payload) {
         cJSON_AddItemToObject(payloadRet, "sensors", sensors_array);
         char * msg_write = create_message_config("write", payloadRet);
         message = create_mqtt_message(msg_write);
-        cJSON_Delete(payloadRet);
         free(msg_write);
     } else {
         ESP_LOGE("[new_config_message]", "Unknown action");
@@ -203,8 +200,6 @@ void new_config_message(char* action, char* type, char *payload) {
         char * msg_write = create_message_config("write", payloadRet);
         message = create_mqtt_message(msg_write);
         free(msg_write);
-        cJSON_Delete(payloadRet);
-
     }
 
     if (message != NULL) {

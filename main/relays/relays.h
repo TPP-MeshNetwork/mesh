@@ -12,14 +12,23 @@
 // PIN GPIO23
 #define RELAY2_PIN GPIO_NUM_23
 
-#define RELAYS_LEN 2
-
 extern char *clientIdentifier;
 extern mqtt_queues_t *mqtt_queues;
 extern char * FIRMWARE_VERSION;
 
-
+void add_relay(char *name, int pin);
 void relay_init();
 cJSON* get_relay_state();
+int set_relay_state(int relay_id, int state);
+
+// struct related to onTime Feature for relays
+typedef struct onTimeTaskArgs {
+  int relay_id;
+  int onTime;
+} onTimeTaskArgs_t;
+void onTimeTask(void *args);
+int get_on_time_status(int relay_id);
+void set_on_time_status(int relay_id, size_t onTime);
+void release_on_time_status(int relay_id);
 
 #endif // RELAYS_H

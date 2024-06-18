@@ -25,7 +25,7 @@ static void task_job_guard(void *args) {
   *   Creates a new sensor task
   *
   */
-void create_sensor_task(char *task_name, char * sensor_type, char * sensor_metrics[] ,TaskFunction_t task_job , mqtt_queues_t *mqtt_queues, Config_t config) {
+void create_sensor_task(char *task_name, char * sensor_type, char * sensor_metrics[] ,TaskFunction_t task_job , mqtt_queues_t *mqtt_queues, Config_t config, const configSTACK_DEPTH_TYPE usStackDepth) {
 
     sensor_task_t *sensor_task = malloc(sizeof(sensor_task_t));
     sensor_task->task_job = task_job; // adding task job so that it can be executed with the guard task
@@ -51,7 +51,7 @@ void create_sensor_task(char *task_name, char * sensor_type, char * sensor_metri
         ESP_LOGI(MESH_TAG, "Loaded config from NVS");
     }
 
-    xTaskCreate(task_job_guard, task_name, 3072, (void *) sensor_task, 5, NULL);
+    xTaskCreate(task_job_guard, task_name, usStackDepth, (void *) sensor_task, 5, NULL);
 }
 
 /*

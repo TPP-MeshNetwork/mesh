@@ -4,7 +4,7 @@
 *   Publishes on the topic: /mesh/[mesh_id]/relay/dashboard
 */
 #include "../relays/relays.h"
-
+#include "../performance/performance.h"
 
 char * create_message_relay(char* type, cJSON* payload) {
     cJSON *root = cJSON_CreateObject();
@@ -19,7 +19,7 @@ char * create_message_relay(char* type, cJSON* payload) {
         cJSON_AddItemToObject(root, "payload", payload);
     
     char *message = cJSON_PrintUnformatted(root);
-    cJSON_free(root);
+    cJSON_Delete(root);
     return message;
 }
 
@@ -67,12 +67,10 @@ void relay_event_handler(char* topic, char* message) {
             cJSON *payload_array = get_relay_state();
              // add relay json inside payloadResp
             cJSON_AddItemToObject(payload_resp, "relay", payload_array);
-            cJSON_Delete(payload_array);
             
             char * msg_read = create_message_relay("read", payload_resp);
             message = create_mqtt_message(msg_read);
             free(msg_read);
-            cJSON_Delete(payload_resp);
 
             // Create the topic
             char *topic = create_topic("relay", "dashboard", false);
@@ -109,13 +107,23 @@ void relay_event_handler(char* topic, char* message) {
                 cJSON *payload_item = cJSON_GetArrayItem(payload, i);
                 // Getting the relay_id and state
                 int relay_id = cJSON_GetObjectItem(payload_item, "relay_id")->valueint;
-                int state = cJSON_GetObjectItem(payload_item, "state")->valueint;
+
+                int state = -1;
+                if (cJSON_HasObjectItem(payload_item, "state")) {
+                    state = cJSON_GetObjectItem(payload_item, "state")->valueint;
+                }
+
+                // if onTime is present in the payload_item read it
+                int onTime = -1;
+                if (cJSON_HasObjectItem(payload_item, "onTime")) {
+                    onTime = cJSON_GetObjectItem(payload_item, "onTime")->valueint;
+                }
 
                 cJSON *item_relay = cJSON_CreateObject();
-                cJSON_AddNumberToObject(item_relay, "relay_id", relay_id);
+                cJSON_AddNumberToObject(item_relay, "id", relay_id);
                 
-                // Check values of state
-                if ( state != 0 && state != 1) {
+                // Check values of state if onTime is not present
+                if ( onTime == -1 && state != 0 && state != 1) {
                     cJSON_AddStringToObject(item_relay, "status", "error");
                     cJSON_AddStringToObject(item_relay, "message", "Invalid state value");
                     cJSON_AddItemToArray(payload_array, item_relay);
@@ -123,19 +131,40 @@ void relay_event_handler(char* topic, char* message) {
                 }
 
                 cJSON_AddNumberToObject(item_relay, "state", state);
-                switch(relay_id) {
-                    case 1:
-                        gpio_set_level(RELAY1_PIN, state);
-                        cJSON_AddStringToObject(item_relay, "status", "ok");
-                        break;
-                    case 2:
-                        gpio_set_level(RELAY2_PIN, state);
-                        cJSON_AddStringToObject(item_relay, "status", "ok");
-                        break;
-                    default:
+
+                if (onTime > 0) {
+                    // if relay->onTimeTaskActive is 1 then return and do not turn off the relay
+                    int onTimeStatus = get_on_time_status(relay_id);
+                    if (onTimeStatus == 1) {
+                        ESP_LOGI("[onTimeTask]", "Relay id: %d already has an onTimeTask active", relay_id);
+                        cJSON_AddStringToObject(item_relay, "status", "error");
+                        cJSON_AddStringToObject(item_relay, "message", "Relay already has an onTimeTask active");
+                    } else if (onTimeStatus == -1) {
+                        ESP_LOGI("[onTimeTask]", "Relay id: %d not found", relay_id);
+                        cJSON_AddStringToObject(item_relay, "status", "error");
+                        cJSON_AddStringToObject(item_relay, "message", "Relay not found");
+                    } else {
+                        // Create the task to swith off the relay
+                        onTimeTaskArgs_t *args = malloc(sizeof(struct onTimeTaskArgs));
+                        args->relay_id = relay_id;
+                        args->onTime = onTime;
+                        xTaskCreate(onTimeTask, "onTimeTask", 2048, (void *) args, 5, NULL);
+                        log_memory();
+                    }
+                } else {
+                    // Set the relay state
+                    int status = set_relay_state(relay_id, state);
+                    if (status == -1) {
                         cJSON_AddStringToObject(item_relay, "status", "error");
                         cJSON_AddStringToObject(item_relay, "message", "Invalid relay_id");
-                        break;
+                        continue;
+                    } else if (status == -2) {
+                        cJSON_AddStringToObject(item_relay, "status", "error");
+                        cJSON_AddStringToObject(item_relay, "message", "Invalid state value");
+                        continue;
+                    } else {
+                        cJSON_AddStringToObject(item_relay, "status", "ok");
+                    }
                 }
                 cJSON_AddItemToArray(payload_array, item_relay);
             }
@@ -146,7 +175,6 @@ void relay_event_handler(char* topic, char* message) {
             char * msg_read = create_message_relay("write", payload_resp);
             message = create_mqtt_message(msg_read);
             free(msg_read);
-            cJSON_Delete(payload_resp);
 
             // Create the topic
             char *topic = create_topic("relay", "dashboard", false);
