@@ -313,7 +313,7 @@ void task_mqtt_client_start(void *args) {
             mqtt_connection_status = EXIT_FAILURE;
         }
         free(buffer);
-        vTaskDelay(200 / portTICK_PERIOD_MS);
+        vTaskDelay(100 / portTICK_PERIOD_MS);
     }
     vTaskDelete(NULL);
 }
@@ -384,8 +384,8 @@ esp_err_t esp_tasks_runner(void) {
     suscriber_add_topic(create_topic("config", "", false), suscriber_global_config_handler);
     suscriber_add_topic(create_topic("config", "", true), suscriber_particular_config_handler);
     /* Relay Configuration */
-    add_relay("Led 1", GPIO_NUM_22);
-    add_relay("Buzzer", GPIO_NUM_23);
+    add_relay("Buzzer", GPIO_NUM_22);
+    add_relay("Led 1", GPIO_NUM_23);
     relay_init();
     suscriber_add_topic(create_topic("relay", "", true), relay_event_handler);
 

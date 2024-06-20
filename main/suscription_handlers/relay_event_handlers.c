@@ -62,6 +62,26 @@ void relay_event_handler(char* topic, char* message) {
             // Minified Example:
             // {"action":"read","sender_client_id":"iotconsole-a7124307-8b16-4083-ad16-a23a60eb898b","type":"relay"}
 
+            // if read has payload send error
+            if (payload != NULL) {
+                cJSON *payload_resp = cJSON_CreateObject();
+                cJSON *payload_array = cJSON_CreateArray();
+                cJSON *item_relay = cJSON_CreateObject();
+                cJSON_AddStringToObject(item_relay, "status", "error");
+                cJSON_AddStringToObject(item_relay, "message", "Invalid payload");
+                cJSON_AddItemToArray(payload_array, item_relay);
+                cJSON_AddItemToObject(payload_resp, "relay", payload_array);
+                char * msg_read = create_message_relay("read", payload_resp);
+                message = create_mqtt_message(msg_read);
+                free(msg_read);
+                char *topic = create_topic("relay", "dashboard", false);
+                publish(topic, message);
+                free(topic);
+                free(message);
+                cJSON_Delete(root);
+                return;
+            }
+
             // Create the payload object
             cJSON *payload_resp = cJSON_CreateObject();
             cJSON *payload_array = get_relay_state();
@@ -94,19 +114,38 @@ void relay_event_handler(char* topic, char* message) {
             //    }
             // }
             // Minified Example:
-            // {"action":"write","sender_client_id":"iotconsole-a7124307-8b16-4083-ad16-a23a60eb898b","type":"relay","payload": [{"relay_id": 1, "state": 1}]}
+            // {"action":"write","sender_client_id":"iotconsole-a7124307-8b16-4083-ad16-a23a60eb898b","type":"relay","payload":{relay:[{"id": 1,"state":1}]}}
 
             // create array for payload
             cJSON *payload_resp = cJSON_CreateObject();
             cJSON *payload_array = cJSON_CreateArray();
-            
-            int relay_len = cJSON_GetArraySize(payload);
+
+            // get the relay array from the payload if exists
+            if (!cJSON_HasObjectItem(payload, "relay")) {
+                cJSON *item_relay = cJSON_CreateObject();
+                cJSON_AddStringToObject(item_relay, "status", "error");
+                cJSON_AddStringToObject(item_relay, "message", "Invalid payload");
+                cJSON_AddItemToArray(payload_array, item_relay);
+                cJSON_AddItemToObject(payload_resp, "relay", payload_array);
+                char * msg_read = create_message_relay("write", payload_resp);
+                message = create_mqtt_message(msg_read);
+                free(msg_read);
+                char *topic = create_topic("relay", "dashboard", false);
+                publish(topic, message);
+                free(topic);
+                free(message);
+                cJSON_Delete(root);
+                return;
+            }
+                        
+            cJSON* payload_relay = cJSON_GetObjectItem(payload, "relay");
+            int relay_len = cJSON_GetArraySize(payload_relay);
             // for each element of the array of relays
             for (size_t i = 0; i< relay_len; i++) {
                 // get the relay item from the array
-                cJSON *payload_item = cJSON_GetArrayItem(payload, i);
+                cJSON *payload_item = cJSON_GetArrayItem(payload_relay, i);
                 // Getting the relay_id and state
-                int relay_id = cJSON_GetObjectItem(payload_item, "relay_id")->valueint;
+                int relay_id = cJSON_GetObjectItem(payload_item, "id")->valueint;
 
                 int state = -1;
                 if (cJSON_HasObjectItem(payload_item, "state")) {

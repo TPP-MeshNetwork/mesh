@@ -47,7 +47,7 @@ void relay_init() {
     for(size_t i = 0; relaysConfig[i] != NULL; i++) {
         int pin = relaysConfig[i]->pin;
         // Configure GPIO pin as output
-        gpio_set_direction(pin, GPIO_MODE_OUTPUT);
+        gpio_set_direction(pin, GPIO_MODE_INPUT_OUTPUT);
 
         // Set initial level to turn off the LED
         gpio_set_level(pin, 0);
@@ -71,6 +71,7 @@ cJSON* get_relay_state() {
         cJSON *relay = cJSON_CreateObject();
         cJSON_AddNumberToObject(relay, "id", relaysConfig[i]->id);
         cJSON_AddStringToObject(relay, "name", relaysConfig[i]->name);
+        ESP_LOGI("[get_relay_state]", "Relay id: %d, pin: %d name: %s, state: %d", relaysConfig[i]->id, relaysConfig[i]->pin, relaysConfig[i]->name, gpio_get_level(relaysConfig[i]->pin));
         cJSON_AddNumberToObject(relay, "state", gpio_get_level(relaysConfig[i]->pin));
         cJSON_AddNumberToObject(relay, "onTimeActive", relaysConfig[i]->onTimeTaskActive);
         cJSON_AddNumberToObject(relay, "onTimeFinish", relaysConfig[i]->onTimeFinish);
@@ -102,7 +103,7 @@ int set_relay_state(int relay_id, int state) {
     if ( state != 0 && state != 1) {
         return -2;
     }
-
+    ESP_LOGI("[set_relay_state]", "Relay id: %d set to %d", relay_id, state);
     gpio_set_level(relaysConfig[relay_index]->pin, state);
     return 0;
 }
