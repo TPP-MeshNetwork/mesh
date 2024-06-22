@@ -172,10 +172,10 @@ void task_notify_new_device(void *args) {
         }
         free(device_msg);
         free(new_user_msg);
-        // vTaskDelay(24 * 3600 * 1000 / portTICK_PERIOD_MS);
+        vTaskDelay(24 * 3600 * 1000 / portTICK_PERIOD_MS);
         
-        // every 5 min
-        vTaskDelay(5 * 60 * 1000 / portTICK_PERIOD_MS);
+        // // every 5 min
+        // vTaskDelay(5 * 60 * 1000 / portTICK_PERIOD_MS);
     }
     free(new_user_topic);
     free(device_topic);
@@ -239,7 +239,7 @@ void task_mqtt_graph(void *args) {
         }
         free(message);
         free(graph_message);
-        vTaskDelay(pdMS_TO_TICKS(3000));
+        vTaskDelay(pdMS_TO_TICKS(5000));
     }
     free(topic);
     free(parent_mac);
@@ -313,7 +313,7 @@ void task_mqtt_client_start(void *args) {
             mqtt_connection_status = EXIT_FAILURE;
         }
         free(buffer);
-        vTaskDelay(200 / portTICK_PERIOD_MS);
+        vTaskDelay(100 / portTICK_PERIOD_MS);
     }
     vTaskDelete(NULL);
 }
@@ -383,7 +383,9 @@ esp_err_t esp_tasks_runner(void) {
     /* Config */
     suscriber_add_topic(create_topic("config", "", false), suscriber_global_config_handler);
     suscriber_add_topic(create_topic("config", "", true), suscriber_particular_config_handler);
-    /* Relay */
+    /* Relay Configuration */
+    add_relay("Buzzer", GPIO_NUM_22);
+    add_relay("Led 1", GPIO_NUM_23);
     relay_init();
     suscriber_add_topic(create_topic("relay", "", true), relay_event_handler);
 
@@ -399,16 +401,20 @@ esp_err_t esp_tasks_runner(void) {
         create_sensor_task("task_sensor_dht11", "dht11", sensor_dht11_metrics ,task_sensor_dht11, (void *) mqtt_queues, (Config_t) {
             .max_polling_time = 0,  // 0 means no max time restriction
             .min_polling_time = 1000, // 1 second
-            .polling_time = 20000, // 20 seconds
+            .polling_time = 30000, // 30 seconds
             .active = 1 // active
-        });
+        },
+        3072
+        );
         char * sensor_performance_metrics[] = {"free_memory", "min_free_memory", "memory_usage", NULL};
         create_sensor_task("task_sensor_performance", "esp32-performance", sensor_performance_metrics ,task_sensor_performance, (void *) mqtt_queues, (Config_t) {
             .max_polling_time = 0,  // 0 means no max time restriction
             .min_polling_time = 5000, // 5 second
             .polling_time = 10000, // 10 seconds
             .active = 1 // active
-        });
+        },
+        3072
+        );
         xTaskCreate(task_mqtt_graph, "Graph logging task", 3072, (void *)mqtt_queues, 5, NULL);
         xTaskCreate(task_notify_new_device, "Notify new device", 3072, (void *)mqtt_queues, 5, NULL);
         is_comm_mqtt_task_started = true;
