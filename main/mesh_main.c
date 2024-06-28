@@ -408,7 +408,7 @@ esp_err_t esp_tasks_runner(void) {
         3072
         );
         char * sensor_performance_metrics[] = {"free_memory", "min_free_memory", "memory_usage", NULL};
-        char * sensor_performance_units[] = {"kbytes", "kbytes", "%", NULL};
+        char * sensor_performance_units[] = {"KBytes", "KBytes", "%", NULL};
         create_sensor_task("task_sensor_performance", "esp32-performance", sensor_performance_metrics, sensor_performance_units, task_sensor_performance, (void *) mqtt_queues, (Config_t) {
             .max_polling_time = 0,  // 0 means no max time restriction
             .min_polling_time = 5000, // 5 second
