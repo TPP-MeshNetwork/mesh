@@ -1,6 +1,10 @@
-# MILOS: Mesh Integrated Linear Observation System
+<h1 align="center">
+  <div style="display: flex; align-items: center; justify-content: center;">
 
-![MILOS Logo](mi.svg)
+  <img src="light-logo.svg" alt="MILOS Logo" width="300" height="200" style="margin-right: 0px;">
+  <h1 style="font-size: 1.5rem; margin: 0; padding-top: 30px">[ Mesh Integrated Linear Observation System ]</h1>
+</div>
+</h1>
 
 MILOS stands for Mesh Integrated Linear Observation System, which is an experimental setup demonstrating a mesh network interconnected with sensors. This example showcases how to create an IP-capable sub-network using mesh technology. Nodes within this network publish their IP addresses and internal mesh layers to an MQTT broker while utilizing internal communication simultaneously.
 
