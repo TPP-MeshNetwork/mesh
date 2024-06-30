@@ -1,86 +1,38 @@
-| Supported Targets | ESP32 | ESP32-C3 | ESP32-C6 | ESP32-S2 | ESP32-S3 |
-| ----------------- | ----- | -------- | -------- | -------- | -------- |
+# MILOS: Mesh Integrated Linear Observation System
 
-# Mesh IP Internal Networking example
+![MILOS Logo](mi.svg)
 
-This example demonstrates how to use mesh to create a IP capable sub-network.
-As a demonstration all nodes publish their IP and their internal mesh layer to MQTT broker
-and uses internal communication at the same time
+MILOS stands for Mesh Integrated Linear Observation System, which is an experimental setup demonstrating a mesh network interconnected with sensors. This example showcases how to create an IP-capable sub-network using mesh technology. Nodes within this network publish their IP addresses and internal mesh layers to an MQTT broker while utilizing internal communication simultaneously.
 
 ## Functionality
 
-This example uses experimental NAT feature to translate addresses/ports from an internal subnet, that is created
-by the root node running a DHCP server. At the same time, the nodes communicate using low level mesh send/receive
-API to exchange data, such as routing table from root to all nodes and an event notification from one node
-to all other nodes in the mesh. As a demonstration, the same event is also published at the mqtt broker
-on a subscribed topic, so both internal mesh_recv() notification as well as mqtt data event are to be received.
+This project utilizes an experimental NAT (Network Address Translation) feature on ESP32 to translate addresses/ports from an internal subnet, facilitated by the root node running a DHCP server. The nodes communicate using low-level mesh send/receive APIs to exchange data, such as routing tables from the root to all nodes and event notifications from one node to all others in the mesh. As a demonstration, these events are also published to an MQTT broker on a subscribed topic. This setup allows receiving both internal `mesh_recv()` notifications and MQTT data events.
 
-Note, that this example in not supported for IPv6-only configuration.
+**Note:** This example is not supported for IPv6-only configurations.
 
-### Hardware Required
+## Core Characteristics
 
-This example can be executed on any platform board, the only required interface is WiFi and connection to internet.
+- **Mesh Networking:** Establishes a mesh network infrastructure capable of IP communication.
+- **NAT (Network Address Translation):** Experimental feature enabling address/port translation within the internal subnet.
+- **Low-Level Mesh API:** Utilizes mesh send/receive APIs for efficient data exchange.
+- **Event Publishing:** Demonstrates event notifications from one node to all others in the mesh, published to an MQTT broker.
+- **Integration with MQTT:** Allows subscribing to and receiving events via MQTT, alongside internal mesh communications.
 
-### Configure the project
+## Installation
 
-Open the project configuration menu (`idf.py menuconfig`) to configure the mesh network channel, router SSID, router password and mesh softAP settings.
+To run the example, follow these steps:
 
-### Build and Flash
+1. Clone the repository.
+2. Install ESP-IDF VScode extension.
+3. Compile and deploy the code to your nodes.
+4. Configure MQTT broker settings as per your setup.
 
-Build the project and flash it to multiple boards forming a mesh network, then run monitor tool to view serial output:
+## Contributing
 
-```
-idf.py -p PORT flash monitor
-```
+Contributions are welcome! Please fork the repository and create a pull request with your improvements.
 
-(To exit the serial monitor, type ``Ctrl-]``.)
+## License
 
-See the Getting Started Guide for full steps to configure and use ESP-IDF to build projects.
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-## Example Output
 
-### Output sample from mesh node
-```
-I (7749) mesh_main: <MESH_EVENT_TODS_REACHABLE>state:0
-I (7749) mesh_main: <MESH_EVENT_ROOT_ADDRESS>root address:24:0a:c4:09:88:5d
-I (7899) wifi:AP's beacon interval = 307200 us, DTIM period = 2
-I (8809) mesh_main: <IP_EVENT_STA_GOT_IP>IP:10.0.0.3
-I (8819) mesh_main: Tried to publish layer:2 IP:10.0.0.3
-I (8819) mesh_mqtt: Other event id:7
-I (9189) MQTT_CLIENT: Sending MQTT CONNECT message, type: 1, id: 0000
-I (9469) mesh_mqtt: MQTT_EVENT_CONNECTED
-I (9569) mesh_mqtt: sent publish returned msg_id=42728
-I (9839) mesh_mqtt: MQTT_EVENT_SUBSCRIBED, msg_id=60327
-I (9919) mesh_mqtt: MQTT_EVENT_PUBLISHED, msg_id=42728
-...
-I (1218786) MESH_MQTT: sent publish returned msg_id=13978
-W (1218836) mesh_main: Key pressed!
-I (1218836) MESH_MQTT: sent publish returned msg_id=15808
-I (1218846) mesh_main: Sending to [0] 30:ae:a4:80:5b:18: sent with err code: 0
-I (1218906) MESH_MQTT: MQTT_EVENT_PUBLISHED, msg_id=13978
-I (1219016) MESH_MQTT: MQTT_EVENT_PUBLISHED, msg_id=15808
-I (1219366) MESH_MQTT: MQTT_EVENT_DATA
-TOPIC=/topic/ip_mesh/key_pressed
-DATA=24:0a:c4:09:88:5c
-I (1220036) mesh_main: Received Routing table [0] 30:ae:a4:80:5b:18
-I (1220036) mesh_main: Received Routing table [1] 24:0a:c4:09:88:5c
-```
-
-### Output sample from the root node
-```
-I (11957) mesh_main: <MESH_EVENT_TODS_REACHABLE>state:0
-I (11967) mesh_main: <MESH_EVENT_ROOT_ADDRESS>root address:24:0a:c4:09:88:5d
-I (11967) wifi:AP's beacon interval = 102400 us, DTIM period = 3
-I (12767) esp_netif_handlers: sta ip: 192.168.2.3, mask: 255.255.255.0, gw: 192.168.2.1
-I (12767) mesh_main: <IP_EVENT_STA_GOT_IP>IP:192.168.2.3
-...
-I (1253864) mesh_main: Received Routing table [0] 30:ae:a4:80:5b:18
-I (1253864) mesh_main: Received Routing table [1] 24:0a:c4:09:88:5c
-I (1253874) mesh_main: Sending routing table to [0] 30:ae:a4:80:5b:18: sent with err code: 0
-I (1253884) mesh_main: Sending routing table to [1] 24:0a:c4:09:88:5c: sent with err code: 0
-I (1253974) MESH_MQTT: MQTT_EVENT_PUBLISHED, msg_id=18126
-W (1254714) mesh_main: Keypressed detected on node: 24:0a:c4:09:88:5c
-I (1254814) MESH_MQTT: MQTT_EVENT_DATA
-TOPIC=/topic/ip_mesh/key_pressed
-DATA=24:0a:c4:09:88:5c
-```
