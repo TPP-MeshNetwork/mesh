@@ -25,7 +25,7 @@ static void task_job_guard(void *args) {
   *   Creates a new sensor task
   *
   */
-void create_sensor_task(char *task_name, char * sensor_type, char * sensor_metrics[] ,TaskFunction_t task_job , mqtt_queues_t *mqtt_queues, Config_t config, const configSTACK_DEPTH_TYPE usStackDepth) {
+void create_sensor_task(char *task_name, char * sensor_type, char * sensor_metrics[], char* sensor_units[], TaskFunction_t task_job , mqtt_queues_t *mqtt_queues, Config_t config, const configSTACK_DEPTH_TYPE usStackDepth) {
 
     sensor_task_t *sensor_task = malloc(sizeof(sensor_task_t));
     sensor_task->task_job = task_job; // adding task job so that it can be executed with the guard task
@@ -33,12 +33,24 @@ void create_sensor_task(char *task_name, char * sensor_type, char * sensor_metri
     sensor_task->mqtt_queues = mqtt_queues;
 
     // add task mapping task_name to id
-    int task_id = add_task_mapping(task_name, sensor_type, sensor_metrics);
+    int task_id = add_task_mapping(task_name, sensor_type);
     
     if (task_id == -1) {
         ESP_LOGI(MESH_TAG, "Task mapping already exists");
         return;
     }
+
+    // add sensor metrics
+    for (size_t i = 0; sensor_metrics[i] != NULL; i++) {
+        char * metric_type = sensor_metrics[i];
+        char * metric_unit = sensor_units[i];
+        if (metric_type == NULL) {
+            ESP_LOGE(MESH_TAG, "Error in create_sensor_task: metric_type or metric_unit is NULL");
+        } else {
+            add_sensor_metric(task_name, metric_type, metric_unit!=NULL ? metric_unit : "");
+        }
+    }
+
     // adding task config to the tasks_config
     add_task_config(task_id, sensor_type, config);
 

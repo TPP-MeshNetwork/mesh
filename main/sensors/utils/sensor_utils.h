@@ -21,7 +21,7 @@ typedef struct {
     mqtt_queues_t *mqtt_queues;
 } TaskJobArgs_t;
 
-void create_sensor_task(char *task_name, char *sensor_type, char * sensor_metrics[], TaskFunction_t task_job , mqtt_queues_t *mqtt_queues, Config_t config, const configSTACK_DEPTH_TYPE usStackDepth);
+void create_sensor_task(char *task_name, char *sensor_type, char * sensor_metrics[], char * sensor_units[], TaskFunction_t task_job , mqtt_queues_t *mqtt_queues, Config_t config, const configSTACK_DEPTH_TYPE usStackDepth);
 size_t get_sensor_count(char * sensor_metrics[]);
 
 #endif // SENSOR_UTILS_H

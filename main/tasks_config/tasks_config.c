@@ -246,7 +246,7 @@ int get_task_id_by_name(char * task_name) {
   *   Add a task mapping
   *
 */
-int add_task_mapping(char * task_name, char *sensor_name, char * sensor_metrics[]) {
+int add_task_mapping(char * task_name, char *sensor_name) {
     // check if the task_name already exists
     if (get_task_id_by_name(task_name) != -1) {
         return -1;
@@ -256,23 +256,23 @@ int add_task_mapping(char * task_name, char *sensor_name, char * sensor_metrics[
     ret_task_mapping->id = HASH_COUNT(tasks_mapping) + 1;
     strcpy(ret_task_mapping->task_name, task_name);
 
-    // Creating a copy in the heap of the sensor_metrics
-    int i = 0;
-    while (sensor_metrics[i] != NULL) i++; // count how many items are in the array
-    char ** sensor_metrics_copy = (char **)malloc(sizeof(char *) * i + 1); // +1 for the NULL
-    for (int j = 0; j < i; j++) {
-        sensor_metrics_copy[j] = (char *) malloc(sizeof(char) * strlen(sensor_metrics[j]) + 1);
-        strcpy(sensor_metrics_copy[j], sensor_metrics[j]);
-        sensor_metrics_copy[j][strlen(sensor_metrics[j])] = '\0';
-    }
-    sensor_metrics_copy[i] = NULL; // adding the NULL at the end of the array
+    // // Creating a copy in the heap of the sensor_metrics
+    // int i = 0;
+    // while (sensor_metrics[i] != NULL) i++; // count how many items are in the array
+    // char ** sensor_metrics_copy = (char **)malloc(sizeof(char *) * i + 1); // +1 for the NULL
+    // for (int j = 0; j < i; j++) {
+    //     sensor_metrics_copy[j] = (char *) malloc(sizeof(char) * strlen(sensor_metrics[j]) + 1);
+    //     strcpy(sensor_metrics_copy[j], sensor_metrics[j]);
+    //     sensor_metrics_copy[j][strlen(sensor_metrics[j])] = '\0';
+    // }
+    // sensor_metrics_copy[i] = NULL; // adding the NULL at the end of the array
 
     // Adding sensor name
     ret_task_mapping->sensor_name = (char *) malloc(sizeof(char) * strlen(sensor_name) + 1);
     strcpy(ret_task_mapping->sensor_name, sensor_name);
     ret_task_mapping->sensor_name[strlen(sensor_name)] = '\0';
 
-    ret_task_mapping->sensor_types = sensor_metrics_copy;
+    ret_task_mapping->sensor_metrics = NULL;
     ESP_LOGI("[add_task_mapping]", "Adding task mapping: %s, id: %d", task_name, ret_task_mapping->id);
 
     HASH_ADD_STR(tasks_mapping, task_name, ret_task_mapping);
@@ -310,7 +310,29 @@ char ** get_sensor_metrics_by_task_id(int id) {
     char * task_name = get_task_name_by_id(id);
     TasksMapping_t *ret_task_mapping;
     HASH_FIND_STR(tasks_mapping, task_name, ret_task_mapping);
-    return ret_task_mapping->sensor_types;
+    if (ret_task_mapping == NULL) {
+        return NULL;
+    }
+    SensorMetric_t *sensor_metrics = ret_task_mapping->sensor_metrics;
+    if (sensor_metrics == NULL) {
+        return NULL;
+    }
+
+    char ** sensor_metrics_ = (char **) malloc(sizeof(char *) * 5);
+    int i = 0;
+    while (sensor_metrics != NULL) {
+        // check if we need more memory for the array
+        if (i > 5) {
+            sensor_metrics_ = (char **) realloc(sensor_metrics_, sizeof(char *) * i + 1);
+        }
+        sensor_metrics_[i] = (char *) malloc(sizeof(char) * strlen(sensor_metrics->metric_type) + 1);
+        strcpy(sensor_metrics_[i], sensor_metrics->metric_type);
+        sensor_metrics_[i][strlen(sensor_metrics->metric_type)] = '\0';
+        sensor_metrics = sensor_metrics->next;
+        i++;
+    }
+    sensor_metrics_[i] = NULL;
+    return sensor_metrics_;
 }
 
 /*
@@ -361,12 +383,35 @@ cJSON * get_all_tasks_metrics_json() {
 
         // Creating an array for sensor metrics
         cJSON * sensor_metrics_array = cJSON_CreateArray();
-        char ** sensor_metrics_ = task_mapping->sensor_types;
-        for (int i = 0; sensor_metrics_[i] != NULL; i++) {
-            cJSON_AddItemToArray(sensor_metrics_array, cJSON_CreateString(sensor_metrics_[i]));
+        SensorMetric_t* sensor_metrics_ = task_mapping->sensor_metrics;
+        while (sensor_metrics_ != NULL) {
+            cJSON *sensor_metric = cJSON_CreateObject();
+            cJSON_AddItemToObject(sensor_metric, "type", cJSON_CreateString(sensor_metrics_->metric_type));
+            cJSON_AddItemToObject(sensor_metric, "unit", cJSON_CreateString(sensor_metrics_->metric_unit));
+            cJSON_AddItemToArray(sensor_metrics_array, sensor_metric);
+            sensor_metrics_ = sensor_metrics_->next;
         }
         cJSON_AddItemToObject(task_object, "metrics", sensor_metrics_array);
         cJSON_AddItemToArray(tasks_array, task_object);
     }
     return tasks_array;
+}
+
+void add_sensor_metric(char* task_name, char * metric_type, char * metric_unit) {
+    TasksMapping_t *ret_task_mapping;
+    HASH_FIND_STR(tasks_mapping, task_name, ret_task_mapping);
+    if (ret_task_mapping == NULL) {
+        ESP_LOGI("[add_sensor_metric]", "Task name: %s not found", task_name);
+        return;
+    }
+    SensorMetric_t *sensor_metric = (SensorMetric_t *) malloc(sizeof(SensorMetric_t));
+    sensor_metric->metric_type = (char *) malloc(sizeof(char) * strlen(metric_type) + 1);
+    strcpy(sensor_metric->metric_type, metric_type);
+    sensor_metric->metric_type[strlen(metric_type)] = '\0';
+    sensor_metric->metric_unit = (char *) malloc(sizeof(char) * strlen(metric_unit) + 1);
+    strcpy(sensor_metric->metric_unit, metric_unit);
+    sensor_metric->metric_unit[strlen(metric_unit)] = '\0';
+    sensor_metric->next = ret_task_mapping->sensor_metrics;
+    ret_task_mapping->sensor_metrics = sensor_metric;
+    ESP_LOGI("[add_sensor_metric]", "Adding sensor metric: %s (unit: %s) to task name: %s", metric_type, metric_unit, task_name);
 }
