@@ -1,8 +1,7 @@
 <h1 align="center">
   <div style="display: flex; align-items: center; justify-content: center;">
-
   <img src="light-logo.svg" alt="MILOS Logo" width="300" height="200" style="margin-right: 0px;">
-  <h1 style="font-size: 1.5rem; margin: 0; padding-top: 30px">[ Mesh Integrated Linear Observation System ]</h1>
+  <p style="font-size: 0.5rem; margin: 0; padding-top: 30px">[ Mesh Integrated Linear Observation System ]</p>
 </div>
 </h1>
 
