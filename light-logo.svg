@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 60" width="300" height="60" fill="#394240">
+  <text x="50.25" y="45" font-size="44" font-weight="bold" fill="black">M</text>
+  <text x="101.25" y="45" font-size="40" font-weight="bold" fill="black">I</text>
+  <text x="131.25" y="45" font-size="40" font-weight="bold" fill="black">L</text>
+  <g transform="translate(191.25 30)">
+    <circle r="17" stroke="#288ccb" stroke-width="5" fill="none"/>
+    <path stroke="green" stroke-width="3" d="m-10-16-15-19"/>
+    <circle cx="-33" cy="-42" r="10" stroke="#f6e72e" stroke-width="5" fill="none"/>
+    <path stroke="green" stroke-width="3" d="M0 20v15"/>
+    <circle cy="44" r="10" stroke="#d71411" stroke-width="5" fill="none"/>
+    <path stroke="green" stroke-width="3" d="m-7 17-28 28"/>
+    <circle cx="-42" cy="52" r="10" stroke="#7e22da" stroke-width="5" fill="none"/>
+  </g>
+  <text x="226.25" y="45" font-size="40" font-weight="bold" fill="black">S</text>
+</svg>
