@@ -389,14 +389,35 @@ esp_err_t app_wifi_init(void) {
 
     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
     ESP_ERROR_CHECK(esp_wifi_init(&cfg));
+
+    // Creating the SSID
+    char * macSta = get_mac_sta();
+    // slice the last 6 characters of the mac address
+    char * last6macSta = macSta + strlen(macSta) - 6;
+    // create ssid as uint8_t ssid[32] adding the last 6 characters of the mac address
+    char prefix[] = "MILOS:";
+    char * ssid;
+    ssid = malloc(strlen(prefix) + 6 + 1);
+    if (ssid == NULL) {
+        ESP_LOGE(MESH_TAG, "Failed to allocate memory for SSID");
+        return ESP_FAIL;
+    }
+    snprintf(ssid, strlen(prefix) + strlen(last6macSta) + 1, "%s%s", prefix, last6macSta);
+    unsigned char unsigned_ssid[32];
+    for (int i = 0; i < 32; i++) {
+        unsigned_ssid[i] = (unsigned char) ssid[i];
+    }
+    unsigned_ssid[32] = '\0';
+    ESP_LOGI("Network Manager", "SSID: %s\n", unsigned_ssid);
+
     wifi_config_t conf = {
         .ap = {
-            .ssid = "admin-milos",
-            .ssid_len = strlen("admin-milos"),
+            .ssid_len = strlen((char *)unsigned_ssid),
             .max_connection = 4,
             .authmode = WIFI_AUTH_OPEN
         },
     };
+    memcpy(conf.ap.ssid, unsigned_ssid, conf.ap.ssid_len);
 
     ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_APSTA));
     ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_AP, &conf));
