@@ -27,7 +27,7 @@ typedef struct {
     void (*handler)(char*, char*);
 } suscription_event_handler_t;
 
-extern char * FIRMWARE_VERSION;
-extern char * FIRMWARE_REVISION;
+extern const char FIRMWARE_VERSION[];
+extern const char FIRMWARE_REVISION[];
 
 #endif // SUSCRIPTION_EVENT_HANDLERS_H

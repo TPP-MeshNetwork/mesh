@@ -45,8 +45,8 @@ char * MESH_TAG = "esp32-mesh";
 char * SUPPORT_EMAIL = "support@milos.com";
 char * USER_EMAIL = NULL;
 
-char * FIRMWARE_VERSION = "v1.0.0";
-char * FIRMWARE_REVISION = "rev0.1";
+const char FIRMWARE_VERSION[] = "v1.0.0";
+const char FIRMWARE_REVISION[] = "rev0.1";
 
 /*******************************************************
  *                Variable Definitions for Mesh
