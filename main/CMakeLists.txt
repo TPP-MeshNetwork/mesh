@@ -23,6 +23,8 @@ idf_component_register(SRCS # Main files Mesh
                             "relays/relays.c"
                             # Reset Button
                             "reset_button/reset_button.c"
+                            # Status Led
+                            "status_led/status_led.c"
                      INCLUDE_DIRS "." 
                                  "mesh_netif"
                                  "mqtt"
@@ -35,4 +37,5 @@ idf_component_register(SRCS # Main files Mesh
                                  "relays"
                                  "utils"
                                  "reset_button"
+                                 "status_led"
                         )

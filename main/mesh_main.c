@@ -32,6 +32,7 @@
 #include "tasks_config/tasks_config.h"
 #include "relays/relays.h"
 #include "reset_button/reset_button.h"
+#include "status_led/status_led.h"
 
 /*******************************************************
  *                Macros MESH
@@ -787,11 +788,14 @@ void app_start(void) {
 
     free(ssid);
     free(pwd);
+    status_led_set_green();
 }
 
 void app_main(void) {
     init_config_button();
     init_config_led();
+    init_status_led();
+
     ESP_LOGI(MESH_TAG, "%i", ESP_IDF_VERSION);
     vTaskDelay(2000 / portTICK_PERIOD_MS);
     ESP_LOGI(MESH_TAG, "[app_main] main inititalized");
@@ -809,10 +813,12 @@ void app_main(void) {
         xTaskCreate(check_pin_status, "button", 3072, NULL,5,NULL );
         if (is_configured == CONFIGURED_FLAG) {
             ESP_LOGI(MESH_TAG, "[app_main] The device has been configured");
+            status_led_set_blue();
             set_config_led(true);
             // Starting the main application that starts the mesh network
             app_start();
         } else {
+            status_led_set_red();
             ESP_LOGI(MESH_TAG, "[app_main] The device has not been configured yet");
             ESP_LOGI(MESH_TAG, "[app_main] Initializing the webserver");
             app_wifi_init();
