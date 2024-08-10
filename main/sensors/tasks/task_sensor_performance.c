@@ -40,7 +40,12 @@ void task_sensor_performance(void *args) {
         sensor_data[1] = esp_get_minimum_free_heap_size();
         // ESP_LOGI(MESH_TAG, "Memory usage: %d bytes", esp_get_free_heap_size() - esp_get_minimum_free_heap_size());
         // we divide by 512KB because the heap has that size instead of 4MB
-        sensor_data[2] = (esp_get_free_heap_size() - esp_get_minimum_free_heap_size()) / 512;
+        //sensor_data[2] = (esp_get_free_heap_size() - esp_get_minimum_free_heap_size()) / 512;
+
+        // Heap size is 512kb
+        uint32_t heap_size = 512 * 1024;
+        // Percentage of free memory = (free memory / heap size) * 100
+        sensor_data[2] = (uint32_t)((1-(esp_get_free_heap_size() / (float) heap_size)) * 100);
 
         // Sending for each sensor metric the message value to the topic
 
