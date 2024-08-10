@@ -14,6 +14,7 @@
 #include "stdbool.h"
 #include "esp_err.h"
 #include "mbedtls/base64.h"
+#include "../mesh_netif/mesh_netif.h"
 
 #define UNCONFIGURED_FLAG 0
 #define CONFIGURED_FLAG 1

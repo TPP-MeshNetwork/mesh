@@ -13,6 +13,7 @@ char * create_message_relay(char* type, cJSON* payload) {
     cJSON_AddStringToObject(root, "type", type);
     cJSON *firmware = cJSON_CreateObject();
     cJSON_AddStringToObject(firmware, "version", FIRMWARE_VERSION);
+    cJSON_AddStringToObject(firmware, "revision", FIRMWARE_REVISION);
     cJSON_AddItemToObject(root, "firmware", firmware);
 
     if (payload != NULL)

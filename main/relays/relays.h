@@ -14,7 +14,8 @@
 
 extern char *clientIdentifier;
 extern mqtt_queues_t *mqtt_queues;
-extern char * FIRMWARE_VERSION;
+extern const char FIRMWARE_VERSION[];
+extern const char FIRMWARE_REVISION[];
 
 void add_relay(char *name, int pin);
 void relay_init();

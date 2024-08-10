@@ -17,6 +17,7 @@ char * create_message_config(char* action, cJSON* payload) {
     cJSON_AddStringToObject(root, "sender_client_id", clientIdentifier);
     cJSON *firmware = cJSON_CreateObject();
     cJSON_AddStringToObject(firmware, "version", FIRMWARE_VERSION);
+    cJSON_AddStringToObject(firmware, "revision", FIRMWARE_REVISION);
     cJSON_AddItemToObject(root, "firmware", firmware);
 
     ESP_LOGI(MESH_TAG, "%s", cJSON_Print(payload));
