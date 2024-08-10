@@ -317,10 +317,10 @@ char ** get_sensor_metrics_by_task_id(int id) {
     if (sensor_metrics == NULL) {
         return NULL;
     }
-
     char ** sensor_metrics_ = (char **) malloc(sizeof(char *) * 5);
     int i = 0;
     while (sensor_metrics != NULL) {
+
         // check if we need more memory for the array
         if (i > 5) {
             sensor_metrics_ = (char **) realloc(sensor_metrics_, sizeof(char *) * i + 1);
@@ -411,7 +411,23 @@ void add_sensor_metric(char* task_name, char * metric_type, char * metric_unit) 
     sensor_metric->metric_unit = (char *) malloc(sizeof(char) * strlen(metric_unit) + 1);
     strcpy(sensor_metric->metric_unit, metric_unit);
     sensor_metric->metric_unit[strlen(metric_unit)] = '\0';
-    sensor_metric->next = ret_task_mapping->sensor_metrics;
-    ret_task_mapping->sensor_metrics = sensor_metric;
+
+    if (ret_task_mapping->sensor_metrics == NULL) {
+        // First metric, add the current metric to the set
+        ret_task_mapping->sensor_metrics = sensor_metric;
+        sensor_metric->next = NULL;
+    } else {
+        // Is not the first metric, add the current metric to the last position
+        SensorMetric_t *sensor_metrics_ = ret_task_mapping->sensor_metrics;
+        while (sensor_metrics_->next != NULL) {
+            sensor_metrics_ = sensor_metrics_->next;
+        }
+        sensor_metrics_->next = sensor_metric;
+        sensor_metric->next = NULL;
+    }
+
+    //sensor_metric->next = ret_task_mapping->sensor_metrics;
+    //ret_task_mapping->sensor_metrics = sensor_metric;
+   
     ESP_LOGI("[add_sensor_metric]", "Adding sensor metric: %s (unit: %s) to task name: %s", metric_type, metric_unit, task_name);
 }
